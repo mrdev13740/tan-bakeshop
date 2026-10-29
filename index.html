@@ -168,6 +168,51 @@
       </section>
     </section>
 
+    <section id="expensesPage" class="page">
+      <h2>Expenses and remaining income</h2>
+      <p class="muted">Record money spent on staff food, snacks, ingredients, supplies, and other business needs.</p>
+
+      <div class="summary-grid">
+        <article class="summary-card"><p>Total sales income</p><strong id="financialSales">₱0.00</strong></article>
+        <article class="summary-card"><p>Total recorded expenses</p><strong id="financialExpenses">₱0.00</strong></article>
+        <article class="summary-card"><p>Income after expenses</p><strong id="financialRemaining">₱0.00</strong></article>
+      </div>
+
+      <section class="panel">
+        <h3>Record an expense</h3>
+        <form id="expenseForm">
+          <label for="expenseName">Description</label>
+          <input id="expenseName" maxlength="120" required placeholder="e.g. Snacks for staff">
+          <label for="expenseCategory">Category</label>
+          <select id="expenseCategory" required>
+            <option value="Staff food and snacks">Staff food and snacks</option>
+            <option value="Ingredients">Ingredients</option>
+            <option value="Packaging and supplies">Packaging and supplies</option>
+            <option value="Utilities">Utilities</option>
+            <option value="Transportation">Transportation</option>
+            <option value="Other">Other</option>
+          </select>
+          <label for="expenseAmount">Amount paid (₱)</label>
+          <input id="expenseAmount" type="number" min="0.01" step="0.01" required placeholder="0.00">
+          <label for="expenseDate">Date</label>
+          <input id="expenseDate" type="date" required>
+          <button class="button primary full" type="submit">Save expense</button>
+        </form>
+      </section>
+
+      <section class="panel">
+        <div class="section-heading"><h3>Expense history</h3><label for="expensePeriod">Period</label></div>
+        <select id="expensePeriod">
+          <option value="today">Today</option>
+          <option value="week">This week</option>
+          <option value="month" selected>This month</option>
+          <option value="all">All time</option>
+        </select>
+        <div id="expenseList"><p class="empty">No expenses recorded yet.</p></div>
+      </section>
+      <p class="muted">Note: “Income after expenses” is sales minus recorded expenses. For true net profit, also track the cost of making the products sold.</p>
+    </section>
+
     <section id="historyPage" class="page">
       <h2>Sales history</h2>
       <p class="muted">Review your previous transactions.</p>
@@ -196,6 +241,9 @@
     </button>
     <button class="nav-button" data-page="shoppingPage">
       <span>🛒</span>Shopping
+    </button>
+    <button class="nav-button" data-page="expensesPage">
+      <span>💸</span>Expenses
     </button>
     <button class="nav-button" data-page="historyPage">
       <span>📚</span>History
