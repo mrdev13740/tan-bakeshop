@@ -23,6 +23,14 @@ export const auth = getAuth(app);
 export const db = getFirestore(app);
 
 export const offlineReady = enableIndexedDbPersistence(db)
+  .then(() => {
+    console.log("Offline database persistence enabled.");
+    return true;
+  })
   .catch((error) => {
-    console.warn("Offline persistence unavailable:", error.code);
+    console.warn(
+      "Offline database persistence unavailable:",
+      error.code
+    );
+    return false;
   });
