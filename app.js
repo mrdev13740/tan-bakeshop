@@ -1686,6 +1686,24 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   );
 
+  
+  onSnapshot(
+    collection(db, "expenses"),
+    (snapshot) => {
+      expenses = snapshot.docs.map((item) => ({
+        id: item.id,
+        ...item.data()
+      }));
+
+      renderExpenses();
+    },
+    (error) => {
+      console.error("Expense listener failed:", error);
+      showMessage("Could not load expenses. Check Firebase permissions.");
+    }
+  );
+
+
   // ==================================================
   // INITIAL DISPLAY AND AUTOMATIC SYNC
   // ==================================================
