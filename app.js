@@ -163,6 +163,9 @@ document.addEventListener("DOMContentLoaded", async () => {
       modal.addEventListener("click", (event) => {
         if (event.target === modal) modal.remove();
       });
+      modal.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") modal.remove();
+      });
     }
 
     $("saleSavedTitle").textContent = synced
@@ -204,6 +207,103 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (container) {
       container.append(makeElement("p", "empty", message));
     }
+  }
+
+
+  // Reusable, accessible tan-and-olive dialog for confirmations and edits.
+  // Escape, backdrop click, Cancel, and the close button all dismiss it safely.
+  function showDialog({
+    title = "Please confirm",
+    message = "",
+    confirmText = "Confirm",
+    cancelText = "Cancel",
+    danger = false,
+    input = null
+  } = {}) {
+    return new Promise((resolve) => {
+      const overlay = makeElement("div", "app-modal-backdrop");
+      overlay.setAttribute("role", "presentation");
+
+      const dialog = makeElement("section", "app-modal");
+      dialog.setAttribute("role", "dialog");
+      dialog.setAttribute("aria-modal", "true");
+      dialog.setAttribute("aria-labelledby", "appModalTitle");
+      dialog.setAttribute("aria-describedby", "appModalMessage");
+
+      const headingRow = makeElement("div", "app-modal-heading");
+      const heading = makeElement("h2", "", title);
+      heading.id = "appModalTitle";
+      const close = makeButton("×", "app-modal-close", () => finish(null));
+      close.setAttribute("aria-label", "Close dialog");
+      headingRow.append(heading, close);
+
+      const body = makeElement("p", "app-modal-message", message);
+      body.id = "appModalMessage";
+      dialog.append(headingRow, body);
+
+      let field = null;
+      if (input) {
+        const label = makeElement("label", "app-modal-label", input.label || "Value");
+        field = document.createElement("input");
+        field.className = "app-modal-input";
+        field.type = input.type || "text";
+        field.value = input.value ?? "";
+        field.maxLength = input.maxLength || 120;
+        field.required = input.required !== false;
+        label.append(field);
+        dialog.append(label);
+      }
+
+      const actions = makeElement("div", "app-modal-actions");
+      const cancel = makeButton(cancelText, "button secondary", () => finish(null));
+      const confirm = makeButton(confirmText, danger ? "button danger" : "button primary", () => {
+        if (field && field.required && !field.value.trim()) {
+          field.focus();
+          field.reportValidity();
+          return;
+        }
+        finish(field ? field.value.trim() : true);
+      });
+      actions.append(cancel, confirm);
+      dialog.append(actions);
+      overlay.append(dialog);
+
+      let settled = false;
+      function finish(value) {
+        if (settled) return;
+        settled = true;
+        document.removeEventListener("keydown", onKeyDown);
+        overlay.remove();
+        resolve(value);
+      }
+      function onKeyDown(event) {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          finish(null);
+        } else if (event.key === "Tab") {
+          const focusable = [...dialog.querySelectorAll("button, input")]
+            .filter((element) => !element.disabled);
+          if (!focusable.length) return;
+          const first = focusable[0];
+          const last = focusable[focusable.length - 1];
+          if (event.shiftKey && document.activeElement === first) {
+            event.preventDefault(); last.focus();
+          } else if (!event.shiftKey && document.activeElement === last) {
+            event.preventDefault(); first.focus();
+          }
+        }
+      }
+      overlay.addEventListener("click", (event) => {
+        if (event.target === overlay) finish(null);
+      });
+      document.addEventListener("keydown", onKeyDown);
+      document.body.append(overlay);
+      (field || confirm).focus();
+    });
+  }
+
+  function showConfirm(message, options = {}) {
+    return showDialog({ message, ...options });
   }
 
   function makeSaleId() {
@@ -258,13 +358,12 @@ document.addEventListener("DOMContentLoaded", async () => {
   const logoutButton = $("logoutButton");
 
   logoutButton?.addEventListener("click", async () => {
-    if (!confirm("Are you sure you want to log out?")) return;
+    if (!(await showConfirm("Are you sure you want to log out?", { title: "Log out?", confirmText: "Log out" }))) return;
 
     if (pendingSales.length > 0) {
-      const proceed = confirm(
-        `${pendingSales.length} sale(s) have not synced. ` +
-        "They will remain on this device. Keep this browser's " +
-        "site data safe until synchronization finishes. Log out?"
+      const proceed = await showConfirm(
+        `${pendingSales.length} sale(s) have not synced. They will remain on this device. Keep this browser's site data safe until synchronization finishes. Log out?`,
+        { title: "Unsynced sales", confirmText: "Log out anyway", danger: true }
       );
 
       if (!proceed) return;
@@ -519,7 +618,7 @@ document.addEventListener("DOMContentLoaded", async () => {
           return;
         }
 
-        if (!confirm(`Delete "${product.name}"? This cannot be undone.`)) {
+        if (!(await showConfirm(`Delete "${product.name}"? This cannot be undone.`, { title: "Delete product?", confirmText: "Delete", danger: true }))) {
           return;
         }
 
@@ -1069,7 +1168,50 @@ document.addEventListener("DOMContentLoaded", async () => {
 
       row.append(
         details,
-        makeButton("Remove", "button", async () => {
+        makeButton("Edit", "button", async () => {
+          if (!navigator.onLine) {
+            showMessage("Reconnect to edit the shared shopping list.");
+            return;
+          }
+          const editedName = await showDialog({
+            title: "Edit shopping item",
+            message: "Update the item name.",
+            confirmText: "Next",
+            input: { label: "Item name", value: item.name, maxLength: 120 }
+          });
+          if (editedName === null) return;
+          const editedPriceText = await showDialog({
+            title: "Update item price",
+            message: "Enter the price per item in pesos.",
+            confirmText: "Next",
+            input: { label: "Price (₱)", type: "number", value: String(price), maxLength: 12 }
+          });
+          if (editedPriceText === null) return;
+          const editedQtyText = await showDialog({
+            title: "Update quantity",
+            message: "Enter the quantity to buy.",
+            confirmText: "Save changes",
+            input: { label: "Quantity", type: "number", value: String(quantity), maxLength: 8 }
+          });
+          if (editedQtyText === null) return;
+          const editedPrice = Number(editedPriceText);
+          const editedQty = Number(editedQtyText);
+          if (!Number.isFinite(editedPrice) || editedPrice < 0 || !Number.isInteger(editedQty) || editedQty < 1) {
+            showMessage("Enter a valid price and a whole-number quantity of at least 1.");
+            return;
+          }
+          try {
+            await updateDoc(doc(db, "shoppingItems", item.id), {
+              name: editedName, price: editedPrice, quantity: editedQty,
+              updatedAt: serverTimestamp()
+            });
+            showMessage("Shopping item updated successfully.");
+          } catch (error) {
+            console.error(error);
+            showMessage("Could not update shopping item. Check your connection.");
+          }
+        }),
+        makeButton("Remove", "button danger", async () => {
           if (!navigator.onLine) {
             showMessage(
               "Connect to the internet before changing the shopping list."
@@ -1227,9 +1369,10 @@ document.addEventListener("DOMContentLoaded", async () => {
       card.append(
         makeButton("Delete sale", "button", async () => {
           if (sale.syncStatus === "pending") {
-            if (!confirm(
-              "Remove this unsynced sale from this device? It will not be recorded in Firebase."
-            )) return;
+            if (!(await showConfirm(
+              "Remove this unsynced sale from this device? It will not be recorded in Firebase.",
+              { title: "Remove pending sale?", confirmText: "Remove sale", danger: true }
+            ))) return;
 
             const remaining = pendingSales.filter(
               (item) => item.id !== sale.id
@@ -1255,7 +1398,7 @@ document.addEventListener("DOMContentLoaded", async () => {
             return;
           }
 
-          if (!confirm("Permanently delete this sales record?")) return;
+          if (!(await showConfirm("Permanently delete this sales record?", { title: "Delete sales record?", confirmText: "Delete", danger: true }))) return;
 
           try {
             await deleteDoc(doc(db, "sales", sale.id));
@@ -1322,9 +1465,10 @@ document.addEventListener("DOMContentLoaded", async () => {
       return;
     }
 
-    if (!confirm(
-      "Permanently delete all sales history? Export a backup first if needed."
-    )) return;
+    if (!(await showConfirm(
+      "Permanently delete all sales history? Export a backup first if needed.",
+      { title: "Clear all history?", confirmText: "Delete all", danger: true }
+    ))) return;
 
     clearHistoryButton.disabled = true;
 
