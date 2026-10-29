@@ -84,6 +84,111 @@ document.addEventListener("DOMContentLoaded", async () => {
     notice.textContent = message;
   }
 
+  
+function showSaleSavedModal({ synced = false, count = 1 } = {}) {
+  let modal = document.getElementById("saleSavedModal");
+
+  if (!modal) {
+    modal = document.createElement("div");
+    modal.id = "saleSavedModal";
+    modal.setAttribute("role", "dialog");
+    modal.setAttribute("aria-modal", "true");
+    modal.setAttribute("aria-labelledby", "saleSavedTitle");
+
+    Object.assign(modal.style, {
+      position: "fixed",
+      inset: "0",
+      zIndex: "99999",
+      background: "rgba(0,0,0,0.65)",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      padding: "20px"
+    });
+
+    const panel = document.createElement("div");
+
+    Object.assign(panel.style, {
+      background: "#F5EBDD",
+      color: "#11213a",
+      width: "100%",
+      maxWidth: "360px",
+      padding: "28px 22px",
+      borderRadius: "18px",
+      textAlign: "center",
+      boxShadow: "0 12px 40px rgba(0,0,0,0.25)"
+    });
+
+    const icon = document.createElement("div");
+    icon.textContent = "✓";
+    Object.assign(icon.style, {
+      fontSize: "42px",
+      fontWeight: "bold",
+      color: "#647548",
+      marginBottom: "10px"
+    });
+
+    const title = document.createElement("h2");
+    title.id = "saleSavedTitle";
+    title.style.margin = "0 0 12px";
+
+    const message = document.createElement("p");
+    message.id = "saleSavedMessage";
+    Object.assign(message.style, {
+      lineHeight: "1.6",
+      overflowWrap: "anywhere"
+    });
+
+    const closeButton = document.createElement("button");
+    closeButton.type = "button";
+    closeButton.textContent = "Continue";
+    Object.assign(closeButton.style, {
+      background: "#647548",
+      color: "#ffffff",
+      border: "none",
+      borderRadius: "10px",
+      padding: "13px 24px",
+      width: "100%",
+      fontSize: "16px",
+      fontWeight: "bold",
+      cursor: "pointer",
+      marginTop: "12px"
+    });
+
+    closeButton.addEventListener("click", () => {
+      modal.remove();
+    });
+
+    panel.append(icon, title, message, closeButton);
+    modal.append(panel);
+    document.body.append(modal);
+
+    modal.addEventListener("click", (event) => {
+      if (event.target === modal) modal.remove();
+    });
+  }
+
+  const title = document.getElementById("saleSavedTitle");
+  const message = document.getElementById("saleSavedMessage");
+
+  if (synced) {
+    title.textContent = "Order Saved Successfully!";
+    message.textContent =
+      "Your sale has been confirmed by Firebase. " +
+      "It is now saved in your shared sales history.";
+  } else {
+    title.textContent = "Order Saved on This Device!";
+    message.textContent =
+      `${count} sale(s) are safely queued on this device. ` +
+      "They will automatically sync when your internet connection returns. " +
+      "Keep this browser's site data safe until syncing finishes.";
+  }
+
+  modal.style.display = "flex";
+  modal.querySelector("button")?.focus();
+}
+
+
   function formatMoney(value) {
     return new Intl.NumberFormat("en-PH", {
       style: "currency",
@@ -859,48 +964,128 @@ document.addEventListener("DOMContentLoaded", async () => {
   // CHECKOUT — ONLINE AND OFFLINE
   // ==================================================
 
-  $("completeSale")?.addEventListener("click", async () => {
-    if (isCheckingOut) return;
+  
+$("completeSale")?.addEventListener("click", async () => {
+  if (isCheckingOut) return;
 
-    if (!cart.length) {
-      showMessage("Add at least one product to the cart.");
+  if (!cart.length) {
+    showMessage("Add at least one product to the cart.");
+    return;
+  }
+
+  if (!auth.currentUser) {
+    showMessage("Your staff session is unavailable. Sign in again.");
+    return;
+  }
+
+  const cartForSale = cart.map((item) => ({ ...item }));
+  const subtotal = getSubtotal();
+  const discount = getDiscount();
+  const total = subtotal - discount;
+  const cash = Number(cashInput?.value);
+
+  if (!Number.isFinite(cash) || cash < total) {
+    showMessage(
+      "Cash received must be equal to or greater than the total."
+    );
+    return;
+  }
+
+  for (const item of cartForSale) {
+    const product = products.find((entry) => entry.id === item.id);
+
+    if (!product || availableStock(product) < item.quantity) {
+      showMessage(`Not enough available stock for "${item.name}".`);
+      return;
+    }
+  }
+
+  isCheckingOut = true;
+
+  const checkoutButton = $("completeSale");
+
+  if (checkoutButton) {
+    checkoutButton.disabled = true;
+    checkoutButton.textContent = "Saving order...";
+  }
+
+  try {
+    const sale = createLocalSale(
+      cartForSale,
+      subtotal,
+      discount,
+      cash
+    );
+
+    // IMPORTANT: save locally BEFORE clearing the cart or uploading.
+    if (!saveOfflineSale(sale)) {
+      throw new Error(
+        "The order was NOT confirmed as saved. " +
+        "Your cart has been kept. Check phone storage and browser settings."
+      );
+    }
+
+    // Clear the cart only after local storage confirms the save.
+    cart = [];
+
+    if (discountInput) discountInput.value = "0";
+    if (cashInput) cashInput.value = "";
+
+    renderCart();
+
+    // Show immediate confirmation for an offline sale.
+    if (!navigator.onLine) {
+      showSaleSavedModal({
+        synced: false,
+        count: pendingSales.length
+      });
+
+      showMessage(
+        `Offline sale saved locally. ${pendingSales.length} sale(s) waiting to sync.`
+      );
+
       return;
     }
 
-    if (!auth.currentUser) {
-      showMessage("Your staff session is unavailable. Sign in again.");
-      return;
-    }
+    // If older sales are pending, do not hide the newly saved sale.
+    if (pendingSales.length > 0) {
+      await syncPendingSales();
 
-    const cartForSale = cart.map((item) => ({ ...item }));
-    const subtotal = getSubtotal();
-    const discount = getDiscount();
-    const total = subtotal - discount;
-    const cash = Number(cashInput?.value);
-
-    if (!Number.isFinite(cash) || cash < total) {
-      showMessage("Cash received must be equal to or greater than the total.");
-      return;
-    }
-
-    // Ensure that each product is available in the local stock view.
-    for (const item of cartForSale) {
-      const product = products.find((entry) => entry.id === item.id);
-
-      if (!product || availableStock(product) < item.quantity) {
-        showMessage(`Not enough available stock for "${item.name}".`);
-        return;
+      if (pendingSales.some((item) => item.id === sale.id)) {
+        showSaleSavedModal({
+          synced: false,
+          count: pendingSales.length
+        });
+      } else {
+        showSaleSavedModal({ synced: true });
       }
+
+      return;
     }
 
-    isCheckingOut = true;
+    await syncPendingSales();
 
-    const checkoutButton = $("completeSale");
+    if (pendingSales.some((item) => item.id === sale.id)) {
+      showSaleSavedModal({
+        synced: false,
+        count: pendingSales.length
+      });
+    } else {
+      showSaleSavedModal({ synced: true });
+    }
+  } catch (error) {
+    console.error("Checkout failed:", error);
+    showMessage(error.message || "Checkout failed. Please retry.");
+  } finally {
+    isCheckingOut = false;
 
     if (checkoutButton) {
-      checkoutButton.disabled = true;
-      checkoutButton.textContent = "Processing...";
+      checkoutButton.disabled = false;
+      checkoutButton.textContent = "Complete sale";
     }
+  }
+});
+
 
     try {
       // Reconcile earlier offline sales before accepting another
