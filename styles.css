@@ -538,7 +538,7 @@ select:focus {
   left: 0;
   z-index: 50;
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 5px;
   padding: 7px 3%;
   padding-bottom: calc(7px + env(safe-area-inset-bottom));
@@ -708,7 +708,7 @@ select:focus {
     min-height: 0;
     padding: 5px 3%;
     padding-bottom: 5px;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
   }
 
   .nav-button {
@@ -930,7 +930,7 @@ select:focus {
     bottom: 0;
     left: 0;
     min-height: var(--nav-height);
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
     gap: 3px;
     padding: 5px 7px;
     padding-bottom: calc(5px + env(safe-area-inset-bottom));
