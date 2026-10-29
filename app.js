@@ -334,6 +334,19 @@ document.addEventListener("DOMContentLoaded", async () => {
       }
     }
 
+    console.log("Expense form submitted");
+console.log("Browser online status:", navigator.onLine);
+console.log("Local storage available:", (() => {
+  try {
+    localStorage.setItem("__expense_test__", "1");
+    localStorage.removeItem("__expense_test__");
+    return true;
+  } catch (error) {
+    console.error("Local storage unavailable:", error);
+    return false;
+  }
+})());
+
     if (!navigator.onLine) {
       indicator.textContent =
         `OFFLINE — ${pendingSales.length} sale(s) waiting to sync`;
