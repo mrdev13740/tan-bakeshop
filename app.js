@@ -470,6 +470,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   let cart = [];
   let shoppingItems = [];
   let sales = [];
+  let expenses = [];
 
   let productSnapshotFromServer = false;
   let salesSnapshotFromServer = false;
@@ -1494,6 +1495,108 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   });
 
+
+  // ==================================================
+  // EXPENSES AND FINANCIAL SUMMARY
+  // ==================================================
+
+  const expenseForm = $("expenseForm");
+  const expenseList = $("expenseList");
+  const expensePeriod = $("expensePeriod");
+  const expenseDateInput = $("expenseDate");
+  if (expenseDateInput) expenseDateInput.value = new Date().toISOString().slice(0, 10);
+
+  function expenseDateValue(expense) {
+    if (expense.expenseDate) {
+      const parsed = new Date(`${expense.expenseDate}T12:00:00`);
+      if (!Number.isNaN(parsed.getTime())) return parsed;
+    }
+    return toDate(expense.createdAt);
+  }
+
+  function isWithinPeriod(date, period) {
+    if (!date) return false;
+    const now = new Date();
+    const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    if (period === "all") return true;
+    if (period === "today") return date >= startToday;
+    if (period === "week") {
+      const startWeek = new Date(startToday);
+      const day = (startWeek.getDay() + 6) % 7;
+      startWeek.setDate(startWeek.getDate() - day);
+      return date >= startWeek;
+    }
+    return date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth();
+  }
+
+  function renderExpenses() {
+    if (!expenseList) return;
+    const period = expensePeriod?.value || "month";
+    const visibleExpenses = expenses.filter((expense) => isWithinPeriod(expenseDateValue(expense), period))
+      .sort((a, b) => (expenseDateValue(b)?.getTime() || 0) - (expenseDateValue(a)?.getTime() || 0));
+    expenseList.replaceChildren();
+    if (!visibleExpenses.length) showEmpty(expenseList, "No expenses for this period.");
+
+    visibleExpenses.forEach((expense) => {
+      const card = makeElement("article", "history-card");
+      card.append(
+        makeElement("h3", "", `${expense.name || "Expense"} — ${formatMoney(expense.amount)}`),
+        makeElement("p", "muted", `${expense.category || "Other"} · ${expense.expenseDate || "Date unavailable"}`),
+      );
+      card.append(makeButton("Edit", "button secondary", async () => {
+        const name = window.prompt("Expense description:", expense.name || "");
+        if (name === null) return;
+        const amountText = window.prompt("Expense amount:", String(expense.amount || ""));
+        if (amountText === null) return;
+        const amount = Number(amountText);
+        if (!name.trim() || !Number.isFinite(amount) || amount <= 0) {
+          showMessage("Enter a description and a valid amount greater than zero."); return;
+        }
+        if (!navigator.onLine) { showMessage("Connect to the internet before editing expenses."); return; }
+        try {
+          await updateDoc(doc(db, "expenses", expense.id), { name: name.trim(), amount, updatedAt: serverTimestamp() });
+          showMessage("Expense updated.");
+        } catch (error) { console.error(error); showMessage("Could not update expense."); }
+      }));
+      card.append(makeButton("Delete", "button", async () => {
+        if (!(await showConfirm(`Delete expense “${expense.name || "Expense"}” (${formatMoney(expense.amount)})?`, { title: "Delete expense?", confirmText: "Delete", danger: true }))) return;
+        if (!navigator.onLine) { showMessage("Connect to the internet before deleting expenses."); return; }
+        try { await deleteDoc(doc(db, "expenses", expense.id)); showMessage("Expense deleted."); }
+        catch (error) { console.error(error); showMessage("Could not delete expense."); }
+      }));
+      expenseList.append(card);
+    });
+
+    const totalSales = sales.reduce((sum, sale) => sum + (Number(sale.total) || 0), 0);
+    const totalExpenses = expenses.reduce((sum, expense) => sum + (Number(expense.amount) || 0), 0);
+    if ($("financialSales")) $("financialSales").textContent = formatMoney(totalSales);
+    if ($("financialExpenses")) $("financialExpenses").textContent = formatMoney(totalExpenses);
+    if ($("financialRemaining")) $("financialRemaining").textContent = formatMoney(totalSales - totalExpenses);
+  }
+
+  expenseForm?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (!navigator.onLine) { showMessage("Connect to the internet to save an expense safely."); return; }
+    const name = $("expenseName").value.trim();
+    const category = $("expenseCategory").value;
+    const amount = Number($("expenseAmount").value);
+    const expenseDate = $("expenseDate").value;
+    if (!name || !Number.isFinite(amount) || amount <= 0 || !expenseDate) {
+      showMessage("Complete all expense fields and enter an amount greater than zero."); return;
+    }
+    const submitButton = expenseForm.querySelector('button[type="submit"]');
+    if (submitButton) submitButton.disabled = true;
+    try {
+      await addDoc(collection(db, "expenses"), { name, category, amount, expenseDate, createdAt: serverTimestamp() });
+      expenseForm.reset();
+      $("expenseDate").value = new Date().toISOString().slice(0, 10);
+      showMessage("Expense saved. Your financial summary will update shortly.");
+    } catch (error) { console.error(error); showMessage("Could not save expense. Check your Firebase rules and connection."); }
+    finally { if (submitButton) submitButton.disabled = false; }
+  });
+  expensePeriod?.addEventListener("change", renderExpenses);
+
+
   // ==================================================
   // FIRESTORE LISTENERS
   // ==================================================
@@ -1552,6 +1655,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       ];
 
       renderHistory();
+      renderExpenses();
       updateConnectionStatus();
     },
     (error) => {
@@ -1590,6 +1694,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   renderCart();
   renderShopping();
   renderHistory();
+  renderExpenses();
   updateConnectionStatus();
 
   if (navigator.onLine && pendingSales.length > 0) {
