@@ -1,4 +1,4 @@
-const CACHE_NAME = "olive-pos-v1";
+const CACHE_NAME = "olive-pos-v2";
 
 const APP_FILES = [
   "./index.html",
