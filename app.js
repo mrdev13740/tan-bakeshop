@@ -24,8 +24,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const $ = (id) => document.getElementById(id);
 
   // ==================================================
-  // LOCAL OFFLINE SALES QUEUE
-  // Only successfully synchronized sales are removed.
+  // OFFLINE SALES QUEUE
   // ==================================================
 
   const QUEUE_KEY = "olivePOS_pendingSales_v1";
@@ -35,29 +34,27 @@ document.addEventListener("DOMContentLoaded", async () => {
       const data = JSON.parse(localStorage.getItem(QUEUE_KEY) || "[]");
       return Array.isArray(data) ? data : [];
     } catch (error) {
-      console.error("Could not read offline sales queue:", error);
+      console.error("Could not read offline sales:", error);
       return [];
-    }
-  }
-
-  function saveQueue(queue) {
-    try {
-      localStorage.setItem(QUEUE_KEY, JSON.stringify(queue));
-      updatePendingIndicator();
-      return true;
-    } catch (error) {
-      console.error("Could not save offline sales:", error);
-
-      showMessage(
-        "Unable to store the sale locally. Check available phone storage and browser settings."
-      );
-
-      return false;
     }
   }
 
   let pendingSales = readQueue();
   let syncingSales = false;
+  let isCheckingOut = false;
+
+  function saveQueue(queue) {
+    try {
+      localStorage.setItem(QUEUE_KEY, JSON.stringify(queue));
+      return true;
+    } catch (error) {
+      console.error("Could not save offline sales:", error);
+      showMessage(
+        "Unable to save this sale locally. Check your phone storage and browser settings."
+      );
+      return false;
+    }
+  }
 
   // ==================================================
   // GENERAL HELPERS
@@ -84,110 +81,101 @@ document.addEventListener("DOMContentLoaded", async () => {
     notice.textContent = message;
   }
 
-  
-function showSaleSavedModal({ synced = false, count = 1 } = {}) {
-  let modal = document.getElementById("saleSavedModal");
+  function showSaleSavedModal({ synced = false, count = 1 } = {}) {
+    let modal = $("saleSavedModal");
 
-  if (!modal) {
-    modal = document.createElement("div");
-    modal.id = "saleSavedModal";
-    modal.setAttribute("role", "dialog");
-    modal.setAttribute("aria-modal", "true");
-    modal.setAttribute("aria-labelledby", "saleSavedTitle");
+    if (!modal) {
+      modal = document.createElement("div");
+      modal.id = "saleSavedModal";
+      modal.setAttribute("role", "dialog");
+      modal.setAttribute("aria-modal", "true");
+      modal.setAttribute("aria-labelledby", "saleSavedTitle");
 
-    Object.assign(modal.style, {
-      position: "fixed",
-      inset: "0",
-      zIndex: "99999",
-      background: "rgba(0,0,0,0.65)",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      padding: "20px"
-    });
+      Object.assign(modal.style, {
+        position: "fixed",
+        inset: "0",
+        zIndex: "99999",
+        background: "rgba(0,0,0,0.65)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "20px"
+      });
 
-    const panel = document.createElement("div");
+      const panel = document.createElement("div");
 
-    Object.assign(panel.style, {
-      background: "#F5EBDD",
-      color: "#11213a",
-      width: "100%",
-      maxWidth: "360px",
-      padding: "28px 22px",
-      borderRadius: "18px",
-      textAlign: "center",
-      boxShadow: "0 12px 40px rgba(0,0,0,0.25)"
-    });
+      Object.assign(panel.style, {
+        background: "#F5EBDD",
+        color: "#11213a",
+        width: "100%",
+        maxWidth: "360px",
+        padding: "28px 22px",
+        borderRadius: "18px",
+        textAlign: "center",
+        boxShadow: "0 12px 40px rgba(0,0,0,0.25)"
+      });
 
-    const icon = document.createElement("div");
-    icon.textContent = "✓";
-    Object.assign(icon.style, {
-      fontSize: "42px",
-      fontWeight: "bold",
-      color: "#647548",
-      marginBottom: "10px"
-    });
+      const icon = document.createElement("div");
+      icon.textContent = "✓";
 
-    const title = document.createElement("h2");
-    title.id = "saleSavedTitle";
-    title.style.margin = "0 0 12px";
+      Object.assign(icon.style, {
+        fontSize: "42px",
+        fontWeight: "bold",
+        color: "#647548",
+        marginBottom: "10px"
+      });
 
-    const message = document.createElement("p");
-    message.id = "saleSavedMessage";
-    Object.assign(message.style, {
-      lineHeight: "1.6",
-      overflowWrap: "anywhere"
-    });
+      const title = document.createElement("h2");
+      title.id = "saleSavedTitle";
+      title.style.margin = "0 0 12px";
 
-    const closeButton = document.createElement("button");
-    closeButton.type = "button";
-    closeButton.textContent = "Continue";
-    Object.assign(closeButton.style, {
-      background: "#647548",
-      color: "#ffffff",
-      border: "none",
-      borderRadius: "10px",
-      padding: "13px 24px",
-      width: "100%",
-      fontSize: "16px",
-      fontWeight: "bold",
-      cursor: "pointer",
-      marginTop: "12px"
-    });
+      const message = document.createElement("p");
+      message.id = "saleSavedMessage";
 
-    closeButton.addEventListener("click", () => {
-      modal.remove();
-    });
+      Object.assign(message.style, {
+        lineHeight: "1.6",
+        overflowWrap: "anywhere"
+      });
 
-    panel.append(icon, title, message, closeButton);
-    modal.append(panel);
-    document.body.append(modal);
+      const closeButton = document.createElement("button");
+      closeButton.type = "button";
+      closeButton.textContent = "Continue";
 
-    modal.addEventListener("click", (event) => {
-      if (event.target === modal) modal.remove();
-    });
+      Object.assign(closeButton.style, {
+        background: "#647548",
+        color: "#ffffff",
+        border: "none",
+        borderRadius: "10px",
+        padding: "13px 24px",
+        width: "100%",
+        fontSize: "16px",
+        fontWeight: "bold",
+        cursor: "pointer",
+        marginTop: "12px"
+      });
+
+      closeButton.addEventListener("click", () => modal.remove());
+
+      panel.append(icon, title, message, closeButton);
+      modal.append(panel);
+      document.body.append(modal);
+
+      modal.addEventListener("click", (event) => {
+        if (event.target === modal) modal.remove();
+      });
+    }
+
+    $("saleSavedTitle").textContent = synced
+      ? "Sale Saved Successfully!"
+      : "Sale Saved on This Device!";
+
+    $("saleSavedMessage").textContent = synced
+      ? "Firebase confirmed the sale. It is now available in your shared sales history."
+      : `${count} sale(s) are waiting on this device. They will be uploaded when your internet connection returns. Do not clear this browser's site data until synchronization finishes.`;
+
+    modal.style.display = "flex";
+    modal.querySelector("button")?.focus();
   }
-
-  const title = document.getElementById("saleSavedTitle");
-  const message = document.getElementById("saleSavedMessage");
-
-  if (synced) {
-    title.textContent = "Order Saved Successfully!";
-    message.textContent =
-      "Your sale has been confirmed by Firebase. " +
-      "It is now saved in your shared sales history.";
-  } else {
-    title.textContent = "Order Saved on This Device!";
-    message.textContent =
-      `${count} sale(s) are safely queued on this device. ` +
-      "They will automatically sync when your internet connection returns. " +
-      "Keep this browser's site data safe until syncing finishes.";
-  }
-
-  modal.style.display = "flex";
-  modal.querySelector("button")?.focus();
-}
-
 
   function formatMoney(value) {
     return new Intl.NumberFormat("en-PH", {
@@ -202,7 +190,6 @@ function showSaleSavedModal({ synced = false, count = 1 } = {}) {
     if (className) element.className = className;
 
     element.textContent = text;
-
     return element;
   }
 
@@ -219,31 +206,16 @@ function showSaleSavedModal({ synced = false, count = 1 } = {}) {
     }
   }
 
-  function waitForUser() {
-    return new Promise((resolve) => {
-      const unsubscribe = onAuthStateChanged(auth, (user) => {
-        unsubscribe();
-        resolve(user);
-      });
-    });
-  }
-
   function makeSaleId() {
     if (globalThis.crypto?.randomUUID) {
       return globalThis.crypto.randomUUID();
     }
 
-    return (
-      "sale_" +
-      Date.now() +
-      "_" +
-      Math.random().toString(36).slice(2, 12)
-    );
+    return "sale_" + Date.now() + "_" +
+      Math.random().toString(36).slice(2, 12);
   }
 
   function updatePendingIndicator() {
-    const count = pendingSales.length;
-
     let indicator = $("pendingSyncStatus");
 
     if (!indicator) {
@@ -263,15 +235,16 @@ function showSaleSavedModal({ synced = false, count = 1 } = {}) {
 
     if (!navigator.onLine) {
       indicator.textContent =
-        `OFFLINE — ${count} sale(s) waiting to sync`;
+        `OFFLINE — ${pendingSales.length} sale(s) waiting to sync`;
       indicator.className = "offline";
-    } else if (count > 0) {
-      indicator.textContent =
-        `SYNC PENDING — ${count} sale(s) waiting to upload`;
-      indicator.className = "sync-pending";
     } else if (syncingSales) {
-      indicator.textContent = "SYNCING SALES...";
+      indicator.textContent =
+        `SYNCING SALES — ${pendingSales.length} pending`;
       indicator.className = "syncing";
+    } else if (pendingSales.length > 0) {
+      indicator.textContent =
+        `SYNC PENDING — ${pendingSales.length} sale(s) waiting to upload`;
+      indicator.className = "sync-pending";
     } else {
       indicator.textContent = "ONLINE — no pending sales";
       indicator.className = "synced";
@@ -279,7 +252,7 @@ function showSaleSavedModal({ synced = false, count = 1 } = {}) {
   }
 
   // ==================================================
-  // AUTHENTICATION AND STAFF VERIFICATION
+  // AUTHENTICATION
   // ==================================================
 
   const logoutButton = $("logoutButton");
@@ -290,8 +263,8 @@ function showSaleSavedModal({ synced = false, count = 1 } = {}) {
     if (pendingSales.length > 0) {
       const proceed = confirm(
         `${pendingSales.length} sale(s) have not synced. ` +
-        "They will remain on this device, but keep this device's " +
-        "browser data safe until synchronization finishes. Log out?"
+        "They will remain on this device. Keep this browser's " +
+        "site data safe until synchronization finishes. Log out?"
       );
 
       if (!proceed) return;
@@ -311,7 +284,17 @@ function showSaleSavedModal({ synced = false, count = 1 } = {}) {
 
   let currentUser;
 
+  function waitForUser() {
+    return new Promise((resolve) => {
+      const unsubscribe = onAuthStateChanged(auth, (user) => {
+        unsubscribe();
+        resolve(user);
+      });
+    });
+  }
+
   try {
+    // Wait for Firebase offline persistence initialization.
     await offlineReady;
 
     currentUser = await waitForUser();
@@ -321,20 +304,16 @@ function showSaleSavedModal({ synced = false, count = 1 } = {}) {
       return;
     }
 
+    const staffRef = doc(db, "staff", currentUser.uid);
     let staffSnapshot;
 
     try {
-      staffSnapshot = await getDoc(
-        doc(db, "staff", currentUser.uid)
-      );
+      staffSnapshot = await getDoc(staffRef);
     } catch (error) {
-      if (!navigator.onLine) {
-        staffSnapshot = await getDocFromCache(
-          doc(db, "staff", currentUser.uid)
-        );
-      } else {
-        throw error;
-      }
+      console.warn("Could not retrieve staff record from server:", error);
+
+      // Offline fallback only works if the record was cached previously.
+      staffSnapshot = await getDocFromCache(staffRef);
     }
 
     if (
@@ -343,15 +322,16 @@ function showSaleSavedModal({ synced = false, count = 1 } = {}) {
     ) {
       if (navigator.onLine) await signOut(auth);
 
-      window.location.replace("./login.html");
+      document.body.textContent =
+        "Staff approval could not be confirmed. Connect to the internet and sign in again.";
       return;
     }
   } catch (error) {
     console.error("Staff verification failed:", error);
 
     document.body.textContent = navigator.onLine
-      ? "Unable to verify staff access. Please reload and try again."
-      : "Staff approval could not be verified offline. Open the app online first to cache the approval record.";
+      ? "Unable to verify staff access. Reload the page and try again."
+      : "Staff approval is not available in the offline cache. Connect to the internet, open the POS successfully, and try offline mode again.";
 
     return;
   }
@@ -363,7 +343,6 @@ function showSaleSavedModal({ synced = false, count = 1 } = {}) {
   const navButtons = document.querySelectorAll(
     ".bottom-nav .nav-button"
   );
-
   const pages = document.querySelectorAll(".page");
 
   const productForm = $("productForm");
@@ -386,7 +365,6 @@ function showSaleSavedModal({ synced = false, count = 1 } = {}) {
   const shoppingBudget = $("shoppingBudget");
   const shoppingTotal = $("shoppingTotal");
   const budgetRemaining = $("budgetRemaining");
-
   const historyList = $("historyList");
 
   let products = [];
@@ -394,14 +372,12 @@ function showSaleSavedModal({ synced = false, count = 1 } = {}) {
   let shoppingItems = [];
   let sales = [];
 
-  let isCheckingOut = false;
-
   let productSnapshotFromServer = false;
   let salesSnapshotFromServer = false;
   let shoppingSnapshotFromServer = false;
 
   // ==================================================
-  // PAGE NAVIGATION
+  // NAVIGATION
   // ==================================================
 
   function openPage(targetId) {
@@ -421,15 +397,19 @@ function showSaleSavedModal({ synced = false, count = 1 } = {}) {
   }
 
   navButtons.forEach((button) => {
-    button.addEventListener("click", () => openPage(button.dataset.page));
+    button.addEventListener("click", () => {
+      openPage(button.dataset.page);
+    });
   });
 
   document.querySelectorAll("[data-open]").forEach((button) => {
-    button.addEventListener("click", () => openPage(button.dataset.open));
+    button.addEventListener("click", () => {
+      openPage(button.dataset.open);
+    });
   });
 
   // ==================================================
-  // STOCK RESERVED BY LOCAL PENDING SALES
+  // STOCK RESERVED BY PENDING LOCAL SALES
   // ==================================================
 
   function pendingQuantity(productIdValue) {
@@ -481,23 +461,21 @@ function showSaleSavedModal({ synced = false, count = 1 } = {}) {
 
   window.addEventListener("offline", () => {
     updateConnectionStatus();
-    showMessage(
-      "Internet disconnected. Completed sales can be queued locally."
-    );
+    showMessage("Internet disconnected. Completed sales can be queued locally.");
   });
 
   window.addEventListener("online", async () => {
     updateConnectionStatus();
 
     showMessage(
-      "Internet restored. Checking pending sales for automatic synchronization..."
+      "Internet restored. Checking pending sales for synchronization..."
     );
 
     await syncPendingSales();
   });
 
   // ==================================================
-  // PRODUCT MANAGEMENT
+  // PRODUCTS
   // ==================================================
 
   function makeProductCard(product, forPOS = false) {
@@ -519,7 +497,6 @@ function showSaleSavedModal({ synced = false, count = 1 } = {}) {
 
       addButton.disabled = stock <= 0;
       card.append(addButton);
-
       return card;
     }
 
@@ -596,7 +573,7 @@ function showSaleSavedModal({ synced = false, count = 1 } = {}) {
 
     if (!navigator.onLine) {
       showMessage(
-        "Product management is online-only in this version. Reconnect to save product changes."
+        "Product management is online-only. Reconnect before saving product changes."
       );
       return;
     }
@@ -623,7 +600,6 @@ function showSaleSavedModal({ synced = false, count = 1 } = {}) {
           ...data,
           createdAt: serverTimestamp()
         });
-
         showMessage("Product added.");
       }
 
@@ -760,9 +736,7 @@ function showSaleSavedModal({ synced = false, count = 1 } = {}) {
 
     if (next <= 0) {
       cart = cart.filter((entry) => entry.id !== id);
-    } else if (
-      next > availableStock(product) + item.quantity
-    ) {
+    } else if (next > availableStock(product) + item.quantity) {
       showMessage("Quantity exceeds available stock.");
       return;
     } else {
@@ -782,7 +756,7 @@ function showSaleSavedModal({ synced = false, count = 1 } = {}) {
   });
 
   // ==================================================
-  // SAVE AN OFFLINE SALE LOCALLY
+  // LOCAL SALE CREATION AND STORAGE
   // ==================================================
 
   function createLocalSale(items, subtotal, discount, cash) {
@@ -811,6 +785,7 @@ function showSaleSavedModal({ synced = false, count = 1 } = {}) {
     if (!saveQueue(nextQueue)) return false;
 
     pendingSales = nextQueue;
+
     sales = [
       ...sales.filter((item) => item.id !== sale.id),
       { ...sale, syncStatus: "pending" }
@@ -824,9 +799,7 @@ function showSaleSavedModal({ synced = false, count = 1 } = {}) {
   }
 
   // ==================================================
-  // UPLOAD PENDING SALES
-  // Stable document IDs and transactions prevent duplicate
-  // stock deductions when an upload is retried.
+  // UPLOAD SALE TO FIREBASE
   // ==================================================
 
   async function uploadSale(sale) {
@@ -835,7 +808,7 @@ function showSaleSavedModal({ synced = false, count = 1 } = {}) {
     await runTransaction(db, async (transaction) => {
       const existingSale = await transaction.get(saleRef);
 
-      // This ID already exists: never deduct stock a second time.
+      // Prevent duplicate stock deductions when retrying an upload.
       if (existingSale.exists()) return;
 
       const productRecords = [];
@@ -885,6 +858,10 @@ function showSaleSavedModal({ synced = false, count = 1 } = {}) {
     });
   }
 
+  // ==================================================
+  // SYNCHRONIZE PENDING SALES
+  // ==================================================
+
   async function syncPendingSales() {
     if (
       syncingSales ||
@@ -899,8 +876,6 @@ function showSaleSavedModal({ synced = false, count = 1 } = {}) {
     syncingSales = true;
     updateConnectionStatus();
 
-    showMessage(`Syncing ${pendingSales.length} pending sale(s)...`);
-
     try {
       while (navigator.onLine && pendingSales.length > 0) {
         const sale = pendingSales[0];
@@ -908,15 +883,14 @@ function showSaleSavedModal({ synced = false, count = 1 } = {}) {
         try {
           await uploadSale(sale);
 
-          // Remove only after uploadSale succeeds.
-          // If the upload fails, the sale stays in localStorage.
+          // Remove from local storage only after Firebase confirms success.
           const remaining = pendingSales.filter(
             (item) => item.id !== sale.id
           );
 
           if (!saveQueue(remaining)) {
             showMessage(
-              "Sale reached Firebase, but local queue cleanup failed. It will be retried safely."
+              "Firebase accepted the sale, but local queue cleanup failed. It will be retried safely."
             );
             break;
           }
@@ -932,10 +906,6 @@ function showSaleSavedModal({ synced = false, count = 1 } = {}) {
           renderHistory();
           renderProducts();
           updatePendingIndicator();
-
-          showMessage(
-            `Sale synced successfully. ${pendingSales.length} sale(s) remain.`
-          );
         } catch (error) {
           console.error("Sale sync failed:", sale.id, error);
 
@@ -949,9 +919,7 @@ function showSaleSavedModal({ synced = false, count = 1 } = {}) {
       }
 
       if (pendingSales.length === 0) {
-        showMessage(
-          "All pending sales were confirmed by Firebase. Local queued sale data has been cleared."
-        );
+        showMessage("All pending sales were confirmed by Firebase.");
       }
     } finally {
       syncingSales = false;
@@ -961,94 +929,87 @@ function showSaleSavedModal({ synced = false, count = 1 } = {}) {
   }
 
   // ==================================================
-  // CHECKOUT — ONLINE AND OFFLINE
+  // CHECKOUT — SINGLE HANDLER
   // ==================================================
 
-  
-$("completeSale")?.addEventListener("click", async () => {
-  if (isCheckingOut) return;
+  $("completeSale")?.addEventListener("click", async () => {
+    if (isCheckingOut) return;
 
-  if (!cart.length) {
-    showMessage("Add at least one product to the cart.");
-    return;
-  }
-
-  if (!auth.currentUser) {
-    showMessage("Your staff session is unavailable. Sign in again.");
-    return;
-  }
-
-  const cartForSale = cart.map((item) => ({ ...item }));
-  const subtotal = getSubtotal();
-  const discount = getDiscount();
-  const total = subtotal - discount;
-  const cash = Number(cashInput?.value);
-
-  if (!Number.isFinite(cash) || cash < total) {
-    showMessage(
-      "Cash received must be equal to or greater than the total."
-    );
-    return;
-  }
-
-  for (const item of cartForSale) {
-    const product = products.find((entry) => entry.id === item.id);
-
-    if (!product || availableStock(product) < item.quantity) {
-      showMessage(`Not enough available stock for "${item.name}".`);
-      return;
-    }
-  }
-
-  isCheckingOut = true;
-
-  const checkoutButton = $("completeSale");
-
-  if (checkoutButton) {
-    checkoutButton.disabled = true;
-    checkoutButton.textContent = "Saving order...";
-  }
-
-  try {
-    const sale = createLocalSale(
-      cartForSale,
-      subtotal,
-      discount,
-      cash
-    );
-
-    // IMPORTANT: save locally BEFORE clearing the cart or uploading.
-    if (!saveOfflineSale(sale)) {
-      throw new Error(
-        "The order was NOT confirmed as saved. " +
-        "Your cart has been kept. Check phone storage and browser settings."
-      );
-    }
-
-    // Clear the cart only after local storage confirms the save.
-    cart = [];
-
-    if (discountInput) discountInput.value = "0";
-    if (cashInput) cashInput.value = "";
-
-    renderCart();
-
-    // Show immediate confirmation for an offline sale.
-    if (!navigator.onLine) {
-      showSaleSavedModal({
-        synced: false,
-        count: pendingSales.length
-      });
-
-      showMessage(
-        `Offline sale saved locally. ${pendingSales.length} sale(s) waiting to sync.`
-      );
-
+    if (!cart.length) {
+      showMessage("Add at least one product to the cart.");
       return;
     }
 
-    // If older sales are pending, do not hide the newly saved sale.
-    if (pendingSales.length > 0) {
+    if (!auth.currentUser) {
+      showMessage("Your staff session is unavailable. Sign in again.");
+      return;
+    }
+
+    const cartForSale = cart.map((item) => ({ ...item }));
+    const subtotal = getSubtotal();
+    const discount = getDiscount();
+    const total = subtotal - discount;
+    const cash = Number(cashInput?.value);
+
+    if (!Number.isFinite(cash) || cash < total) {
+      showMessage("Cash received must be equal to or greater than the total.");
+      return;
+    }
+
+    for (const item of cartForSale) {
+      const product = products.find((entry) => entry.id === item.id);
+
+      if (!product || availableStock(product) < item.quantity) {
+        showMessage(`Not enough available stock for "${item.name}".`);
+        return;
+      }
+    }
+
+    isCheckingOut = true;
+
+    const checkoutButton = $("completeSale");
+
+    if (checkoutButton) {
+      checkoutButton.disabled = true;
+      checkoutButton.textContent = "Saving sale...";
+    }
+
+    try {
+      const sale = createLocalSale(
+        cartForSale,
+        subtotal,
+        discount,
+        cash
+      );
+
+      // Save locally before clearing the cart or attempting Firebase.
+      if (!saveOfflineSale(sale)) {
+        throw new Error(
+          "The sale was not confirmed as saved. Your cart has been kept. Check phone storage and browser settings."
+        );
+      }
+
+      cart = [];
+
+      if (discountInput) discountInput.value = "0";
+      if (cashInput) cashInput.value = "";
+
+      renderCart();
+
+      if (!navigator.onLine) {
+        showSaleSavedModal({
+          synced: false,
+          count: pendingSales.length
+        });
+
+        showMessage(
+          `Offline sale saved locally. ${pendingSales.length} sale(s) waiting to sync.`
+        );
+
+        return;
+      }
+
+      // Includes the new sale and any older pending sales.
       await syncPendingSales();
 
       if (pendingSales.some((item) => item.id === sale.id)) {
@@ -1059,87 +1020,6 @@ $("completeSale")?.addEventListener("click", async () => {
       } else {
         showSaleSavedModal({ synced: true });
       }
-
-      return;
-    }
-
-    await syncPendingSales();
-
-    if (pendingSales.some((item) => item.id === sale.id)) {
-      showSaleSavedModal({
-        synced: false,
-        count: pendingSales.length
-      });
-    } else {
-      showSaleSavedModal({ synced: true });
-    }
-  } catch (error) {
-    console.error("Checkout failed:", error);
-    showMessage(error.message || "Checkout failed. Please retry.");
-  } finally {
-    isCheckingOut = false;
-
-    if (checkoutButton) {
-      checkoutButton.disabled = false;
-      checkoutButton.textContent = "Complete sale";
-    }
-  }
-});
-
-
-    try {
-      // Reconcile earlier offline sales before accepting another
-      // online sale. If reconciliation fails, queue this sale too.
-      if (navigator.onLine && pendingSales.length > 0) {
-        await syncPendingSales();
-      }
-
-      const sale = createLocalSale(
-        cartForSale,
-        subtotal,
-        discount,
-        cash
-      );
-
-      if (!navigator.onLine || pendingSales.length > 0) {
-        if (!saveOfflineSale(sale)) {
-          throw new Error(
-            "The sale could not be stored locally. Do not close this page; reconnect and try again."
-          );
-        }
-
-        cart = [];
-
-        if (discountInput) discountInput.value = "0";
-        if (cashInput) cashInput.value = "";
-
-        renderCart();
-
-        showMessage(
-          `SALE SAVED LOCALLY — ${pendingSales.length} sale(s) waiting to sync.`
-        );
-
-        if (navigator.onLine) {
-          await syncPendingSales();
-        }
-
-        return;
-      }
-
-      // Online sale: save locally first, then upload using the same ID.
-      // This protects the sale if the connection drops mid-checkout.
-      if (!saveOfflineSale(sale)) {
-        throw new Error("Could not save a local recovery copy of the sale.");
-      }
-
-      cart = [];
-
-      if (discountInput) discountInput.value = "0";
-      if (cashInput) cashInput.value = "";
-
-      renderCart();
-
-      await syncPendingSales();
     } catch (error) {
       console.error("Checkout failed:", error);
       showMessage(error.message || "Checkout failed. Please retry.");
@@ -1191,7 +1071,9 @@ $("completeSale")?.addEventListener("click", async () => {
         details,
         makeButton("Remove", "button", async () => {
           if (!navigator.onLine) {
-            showMessage("Connect to the internet before changing the shopping list.");
+            showMessage(
+              "Connect to the internet before changing the shopping list."
+            );
             return;
           }
 
@@ -1345,28 +1227,31 @@ $("completeSale")?.addEventListener("click", async () => {
       card.append(
         makeButton("Delete sale", "button", async () => {
           if (sale.syncStatus === "pending") {
-            if (
-              !confirm(
-                "Remove this unsynced sale from this device? It will not be recorded in Firebase."
-              )
-            ) return;
+            if (!confirm(
+              "Remove this unsynced sale from this device? It will not be recorded in Firebase."
+            )) return;
 
-            pendingSales = pendingSales.filter(
+            const remaining = pendingSales.filter(
               (item) => item.id !== sale.id
             );
 
-            if (!saveQueue(pendingSales)) return;
+            if (!saveQueue(remaining)) return;
 
+            pendingSales = remaining;
             sales = sales.filter((item) => item.id !== sale.id);
 
             renderHistory();
             renderProducts();
+            updatePendingIndicator();
+
             showMessage("Pending sale removed from this device.");
             return;
           }
 
           if (!navigator.onLine) {
-            showMessage("Connect to the internet before deleting a synced sale.");
+            showMessage(
+              "Connect to the internet before deleting a synced sale."
+            );
             return;
           }
 
@@ -1390,12 +1275,10 @@ $("completeSale")?.addEventListener("click", async () => {
     const todaySales = sortedSales.filter((sale) => {
       const date = toDate(sale.createdAt);
 
-      return (
-        date &&
+      return date &&
         date.getFullYear() === now.getFullYear() &&
         date.getMonth() === now.getMonth() &&
-        date.getDate() === now.getDate()
-      );
+        date.getDate() === now.getDate();
     });
 
     if ($("todaySales")) {
@@ -1423,7 +1306,6 @@ $("completeSale")?.addEventListener("click", async () => {
     );
 
     clearHistoryButton.id = "clearHistory";
-
     historyList.insertAdjacentElement("beforebegin", clearHistoryButton);
   }
 
@@ -1440,9 +1322,9 @@ $("completeSale")?.addEventListener("click", async () => {
       return;
     }
 
-    if (!confirm("Permanently delete all sales history? Export a backup first if needed.")) {
-      return;
-    }
+    if (!confirm(
+      "Permanently delete all sales history? Export a backup first if needed."
+    )) return;
 
     clearHistoryButton.disabled = true;
 
@@ -1493,7 +1375,9 @@ $("completeSale")?.addEventListener("click", async () => {
     },
     (error) => {
       console.error("Product listener failed:", error);
-      showMessage("Could not load products. Check connection and permissions.");
+      showMessage(
+        "Could not load products. Check connection and Firestore permissions."
+      );
     }
   );
 
@@ -1511,7 +1395,6 @@ $("completeSale")?.addEventListener("click", async () => {
         !snapshot.metadata.fromCache &&
         !snapshot.metadata.hasPendingWrites;
 
-      // Keep pending local sales visible until their uploads are confirmed.
       const localPending = pendingSales.map((sale) => ({
         ...sale,
         syncStatus: "pending"
@@ -1556,7 +1439,7 @@ $("completeSale")?.addEventListener("click", async () => {
   );
 
   // ==================================================
-  // INITIAL DISPLAY AND AUTOMATIC RETRY
+  // INITIAL DISPLAY AND AUTOMATIC SYNC
   // ==================================================
 
   renderProducts();
