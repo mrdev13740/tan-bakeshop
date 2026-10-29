@@ -5,6 +5,7 @@ import {
   doc,
   updateDoc,
   deleteDoc,
+  setDoc,
   serverTimestamp,
   getDoc,
   getDocFromCache,
@@ -472,6 +473,32 @@ document.addEventListener("DOMContentLoaded", async () => {
   let sales = [];
   let expenses = [];
 
+  // Offline expenses are kept on this device until Firebase confirms the upload.
+  const EXPENSE_QUEUE_KEY = "olivePOS_pendingExpenses_v1";
+  function readPendingExpenses() {
+    try {
+      const value = JSON.parse(localStorage.getItem(EXPENSE_QUEUE_KEY) || "[]");
+      return Array.isArray(value) ? value : [];
+    } catch (error) {
+      console.error("Could not read pending expenses:", error);
+      return [];
+    }
+  }
+  let pendingExpenses = readPendingExpenses();
+  let syncingExpenses = false;
+
+  function savePendingExpenses(queue) {
+    try {
+      localStorage.setItem(EXPENSE_QUEUE_KEY, JSON.stringify(queue));
+      pendingExpenses = queue;
+      return true;
+    } catch (error) {
+      console.error("Could not store pending expenses locally:", error);
+      showMessage("Could not save the expense on this device. Check browser storage space/settings.");
+      return false;
+    }
+  }
+
   let productSnapshotFromServer = false;
   let salesSnapshotFromServer = false;
   let shoppingSnapshotFromServer = false;
@@ -568,10 +595,11 @@ document.addEventListener("DOMContentLoaded", async () => {
     updateConnectionStatus();
 
     showMessage(
-      "Internet restored. Checking pending sales for synchronization..."
+      "Internet restored. Checking pending sales and expenses for synchronization..."
     );
 
     await syncPendingSales();
+    await syncPendingExpenses();
   });
 
   // ==================================================
@@ -1532,7 +1560,12 @@ document.addEventListener("DOMContentLoaded", async () => {
   function renderExpenses() {
     if (!expenseList) return;
     const period = expensePeriod?.value || "month";
-    const visibleExpenses = expenses.filter((expense) => isWithinPeriod(expenseDateValue(expense), period))
+    const serverIds = new Set(expenses.map((expense) => expense.id));
+    const allExpenses = [
+      ...expenses,
+      ...pendingExpenses.filter((expense) => !serverIds.has(expense.id))
+    ];
+    const visibleExpenses = allExpenses.filter((expense) => isWithinPeriod(expenseDateValue(expense), period))
       .sort((a, b) => (expenseDateValue(b)?.getTime() || 0) - (expenseDateValue(a)?.getTime() || 0));
     expenseList.replaceChildren();
     if (!visibleExpenses.length) showEmpty(expenseList, "No expenses for this period.");
@@ -1543,6 +1576,17 @@ document.addEventListener("DOMContentLoaded", async () => {
         makeElement("h3", "", `${expense.name || "Expense"} — ${formatMoney(expense.amount)}`),
         makeElement("p", "muted", `${expense.category || "Other"} · ${expense.expenseDate || "Date unavailable"}`),
       );
+      if (expense.syncStatus === "pending") {
+        card.append(makeElement("p", "muted", "Pending sync — saved on this device"));
+        card.append(makeButton("Remove pending expense", "button", async () => {
+          if (!(await showConfirm(`Remove pending expense “${expense.name}”?`, { title: "Remove pending expense?", confirmText: "Remove", danger: true }))) return;
+          savePendingExpenses(pendingExpenses.filter((item) => item.id !== expense.id));
+          renderExpenses();
+          showMessage("Pending expense removed from this device.");
+        }));
+        expenseList.append(card);
+        return;
+      }
       card.append(makeButton("Edit", "button secondary", async () => {
         const name = window.prompt("Expense description:", expense.name || "");
         if (name === null) return;
@@ -1568,7 +1612,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
 
     const totalSales = sales.reduce((sum, sale) => sum + (Number(sale.total) || 0), 0);
-    const totalExpenses = expenses.reduce((sum, expense) => sum + (Number(expense.amount) || 0), 0);
+    const totalExpenses = allExpenses.reduce((sum, expense) => sum + (Number(expense.amount) || 0), 0);
     if ($("financialSales")) $("financialSales").textContent = formatMoney(totalSales);
     if ($("financialExpenses")) $("financialExpenses").textContent = formatMoney(totalExpenses);
     if ($("financialRemaining")) $("financialRemaining").textContent = formatMoney(totalSales - totalExpenses);
@@ -1576,7 +1620,6 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   expenseForm?.addEventListener("submit", async (event) => {
     event.preventDefault();
-    if (!navigator.onLine) { showMessage("Connect to the internet to save an expense safely."); return; }
     const name = $("expenseName").value.trim();
     const category = $("expenseCategory").value;
     const amount = Number($("expenseAmount").value);
@@ -1584,16 +1627,92 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (!name || !Number.isFinite(amount) || amount <= 0 || !expenseDate) {
       showMessage("Complete all expense fields and enter an amount greater than zero."); return;
     }
+
     const submitButton = expenseForm.querySelector('button[type="submit"]');
     if (submitButton) submitButton.disabled = true;
+    const expenseRef = doc(collection(db, "expenses"));
+    const localExpense = {
+      id: expenseRef.id,
+      name,
+      category,
+      amount,
+      expenseDate,
+      createdAt: new Date().toISOString(),
+      syncStatus: "pending"
+    };
+
     try {
-      await addDoc(collection(db, "expenses"), { name, category, amount, expenseDate, createdAt: serverTimestamp() });
-      expenseForm.reset();
-      $("expenseDate").value = new Date().toISOString().slice(0, 10);
-      showMessage("Expense saved. Your financial summary will update shortly.");
-    } catch (error) { console.error(error); showMessage("Could not save expense. Check your Firebase rules and connection."); }
-    finally { if (submitButton) submitButton.disabled = false; }
+      if (!navigator.onLine) {
+        if (!savePendingExpenses([...pendingExpenses, localExpense])) return;
+        expenseForm.reset();
+        $("expenseDate").value = new Date().toISOString().slice(0, 10);
+        renderExpenses();
+        showMessage("Expense saved on this device. It will sync when internet returns.");
+        return;
+      }
+
+      try {
+        await setDoc(expenseRef, {
+          name, category, amount, expenseDate,
+          createdAt: serverTimestamp()
+        });
+        expenseForm.reset();
+        $("expenseDate").value = new Date().toISOString().slice(0, 10);
+        showMessage("Expense saved to Firebase.");
+      } catch (error) {
+        console.error("Expense save failed:", error);
+        const temporaryNetworkFailure = !navigator.onLine ||
+          ["unavailable", "deadline-exceeded", "network-request-failed"].includes(error.code);
+        if (temporaryNetworkFailure) {
+          if (!savePendingExpenses([...pendingExpenses, localExpense])) return;
+          expenseForm.reset();
+          $("expenseDate").value = new Date().toISOString().slice(0, 10);
+          renderExpenses();
+          showMessage("Connection interrupted. Expense saved on this device and waiting to sync.");
+        } else {
+          showMessage(error.code === "permission-denied"
+            ? "Firebase denied this expense. Check your Firestore rules and staff approval. The expense was not queued."
+            : "Could not save expense to Firebase. The expense was not queued.");
+          return;
+        }
+      }
+    } finally {
+      if (submitButton) submitButton.disabled = false;
+    }
   });
+
+  async function syncPendingExpenses() {
+    if (syncingExpenses || !navigator.onLine || pendingExpenses.length === 0) return;
+    syncingExpenses = true;
+    try {
+      while (navigator.onLine && pendingExpenses.length > 0) {
+        const expense = pendingExpenses[0];
+        try {
+          await setDoc(doc(db, "expenses", expense.id), {
+            name: expense.name,
+            category: expense.category || "Other",
+            amount: Number(expense.amount),
+            expenseDate: expense.expenseDate,
+            createdAt: serverTimestamp()
+          });
+          savePendingExpenses(pendingExpenses.filter((item) => item.id !== expense.id));
+          renderExpenses();
+        } catch (error) {
+          console.error("Pending expense sync failed:", error);
+          showMessage(error.code === "permission-denied"
+            ? "An offline expense could not sync because Firebase denied permission. It remains saved on this device."
+            : "Some expenses are still waiting to sync. They remain saved on this device.");
+          break;
+        }
+      }
+      if (pendingExpenses.length === 0) {
+        renderExpenses();
+        showMessage("All pending expenses have synced to Firebase.");
+      }
+    } finally {
+      syncingExpenses = false;
+    }
+  }
   expensePeriod?.addEventListener("change", renderExpenses);
 
 
@@ -1686,23 +1805,18 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   );
 
-  
   onSnapshot(
     collection(db, "expenses"),
+    { includeMetadataChanges: true },
     (snapshot) => {
-      expenses = snapshot.docs.map((item) => ({
-        id: item.id,
-        ...item.data()
-      }));
-
+      expenses = snapshot.docs.map((item) => ({ id: item.id, ...item.data(), syncStatus: "synced" }));
       renderExpenses();
     },
     (error) => {
       console.error("Expense listener failed:", error);
-      showMessage("Could not load expenses. Check Firebase permissions.");
+      showMessage("Could not load expenses from Firebase. Check your connection and Firestore rules.");
     }
   );
-
 
   // ==================================================
   // INITIAL DISPLAY AND AUTOMATIC SYNC
@@ -1717,5 +1831,8 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   if (navigator.onLine && pendingSales.length > 0) {
     await syncPendingSales();
+  }
+  if (navigator.onLine && pendingExpenses.length > 0) {
+    await syncPendingExpenses();
   }
 });
