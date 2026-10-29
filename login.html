@@ -1,0 +1,68 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#737b45">
+  <title>Login | Olive POS</title>
+  <link rel="stylesheet" href="./login.css">
+  <script type="module" src="./login.js"></script>
+</head>
+<body>
+  <main class="login-container">
+    <section class="login-card">
+      <div class="logo">T</div>
+
+      <p class="eyebrow">WELCOME BACK</p>
+      <h1>Tan's POS</h1>
+      <p class="subtitle">Sign in to manage your store.</p>
+
+      <form id="loginForm">
+        <label for="email">Email address</label>
+        <input
+          id="email"
+          type="email"
+          placeholder="Enter your email"
+          autocomplete="username"
+          required
+        >
+
+        <label for="password">Password</label>
+        <input
+          id="password"
+          type="password"
+          placeholder="Enter your password"
+          autocomplete="current-password"
+          required
+        >
+
+        <button id="loginButton" type="submit">Sign in</button>
+        <p id="loginMessage" role="status" aria-live="polite"></p>
+      </form>
+
+      <p class="security-note">
+        <span aria-hidden="true">●</span>
+        Authorized staff only
+      </p>
+    </section>
+
+    <footer>Olive POS · Simple store management</footer>
+  </main>
+  <script>
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", async () => {
+        try {
+          const registration = await navigator.serviceWorker.register(
+            "./service-worker.js"
+          );
+  
+          console.log("Olive POS worker:", registration.scope);
+        } catch (error) {
+          console.error("Registration failed:", error);
+        }
+      });
+    }
+  </script>
+</body>
+</html>

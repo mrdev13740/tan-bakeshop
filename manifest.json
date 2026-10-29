@@ -1,0 +1,22 @@
+
+{
+    "id": "./",
+    "name": "Olive POS - Tan's Bakeshop",
+    "short_name": "Olive POS",
+    "description": "Tan's Bakeshop point-of-sale system",
+    "start_url": "./",
+    "scope": "./",
+    "display": "standalone",
+    "background_color": "#f5efe4",
+    "theme_color": "#424a2b",
+    "orientation": "any",
+    "icons": [
+      {
+        "src": "./icon.svg",
+        "sizes": "any",
+        "type": "image/svg+xml",
+        "purpose": "any maskable"
+      }
+    ]
+  }
+  

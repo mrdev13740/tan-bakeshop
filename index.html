@@ -1,0 +1,225 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#66734b">
+  <meta name="description" content="A simple offline-friendly mobile POS">
+  <title>Tan's Bakeshop POS</title>
+  <link rel="manifest" href="./manifest.json">
+  <meta name="theme-color" content="#424a2b">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <h1>Tan's <span>Bakeshop</span></h1>
+      <p>Simple sales, made easier.</p>
+    </div>
+  
+    <div class="header-actions">
+      <span id="connectionStatus" class="status">Checking...</span>
+      <button id="logoutButton" class="button secondary" type="button">
+        Logout
+      </button>
+    </div>
+  </header>
+
+  <main>
+    <section id="posPage" class="page active">
+      <h2>New sale</h2>
+      <p class="muted">Select products to start a transaction.</p>
+
+      <div class="summary-grid">
+        <article class="summary-card">
+          <p>Today's sales</p>
+          <strong id="todaySales">₱0.00</strong>
+        </article>
+        <article class="summary-card">
+          <p>Transactions</p>
+          <strong id="todayCount">0</strong>
+        </article>
+      </div>
+
+      <section class="panel">
+        <div class="section-heading">
+          <h3>Products</h3>
+          <button class="button secondary" data-open="productsPage">
+            + Add product
+          </button>
+        </div>
+        <div id="posProducts" class="product-grid">
+          <p class="empty">Your products will appear here.</p>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="section-heading">
+          <h3>Shopping cart</h3>
+          <button id="clearCart" class="button secondary">Clear</button>
+        </div>
+        <div id="cartItems">
+          <p class="empty">Your cart is empty.</p>
+        </div>
+
+        <div class="total-row">
+          <span>Subtotal</span>
+          <strong id="subtotal">₱0.00</strong>
+        </div>
+
+        <label for="discount">Discount (₱)</label>
+        <input id="discount" type="number" min="0" step="0.01" value="0">
+
+        <div class="total-row grand-total">
+          <span>Total</span>
+          <strong id="grandTotal">₱0.00</strong>
+        </div>
+
+        <label for="cashReceived">Cash received (₱)</label>
+        <input id="cashReceived" type="number" min="0" step="0.01"
+               placeholder="Enter amount received">
+
+        <div class="total-row">
+          <span>Change</span>
+          <strong id="changeDue">₱0.00</strong>
+        </div>
+
+        <button id="completeSale" class="button primary full">
+          Complete sale
+        </button>
+      </section>
+    </section>
+
+    <section id="productsPage" class="page">
+      <h2>Products</h2>
+      <p class="muted">Manage your product names, prices and stock.</p>
+
+      <section class="panel">
+        <form id="productForm">
+          <input type="hidden" id="productId">
+
+          <label for="productName">Product name</label>
+          <input id="productName" maxlength="80" required
+                 placeholder="e.g. Pandesal">
+
+          <label for="productPrice">Price (₱)</label>
+          <input id="productPrice" type="number" min="0.01"
+                 step="0.01" required placeholder="0.00">
+
+          <label for="productStock">Stock quantity</label>
+          <input id="productStock" type="number" min="0"
+                 step="1" value="0" required>
+
+          <button class="button primary full" type="submit">
+            Save product
+          </button>
+        </form>
+      </section>
+
+      <section class="panel">
+        <h3>Saved products</h3>
+        <div id="productList">
+          <p class="empty">No products added yet.</p>
+        </div>
+      </section>
+    </section>
+
+    <section id="shoppingPage" class="page">
+      <h2>Shopping calculator</h2>
+      <p class="muted">Plan expenses and check your remaining budget.</p>
+
+      <section class="panel">
+        <label for="shoppingBudget">Your budget (₱)</label>
+        <input id="shoppingBudget" type="number" min="0"
+               step="0.01" placeholder="Enter your budget">
+
+        <form id="shoppingForm">
+          <label for="shoppingName">Item name</label>
+          <input id="shoppingName" required placeholder="e.g. Flour">
+
+          <label for="shoppingPrice">Price per item (₱)</label>
+          <input id="shoppingPrice" type="number" min="0"
+                 step="0.01" required>
+
+          <label for="shoppingQty">Quantity</label>
+          <input id="shoppingQty" type="number" min="1"
+                 step="1" value="1" required>
+
+          <button class="button primary full" type="submit">
+            Add shopping item
+          </button>
+        </form>
+      </section>
+
+      <section class="panel">
+        <h3>Shopping list</h3>
+        <div id="shoppingList">
+          <p class="empty">Your shopping list is empty.</p>
+        </div>
+        <div class="total-row grand-total">
+          <span>Total cost</span>
+          <strong id="shoppingTotal">₱0.00</strong>
+        </div>
+        <div class="total-row">
+          <span>Budget remaining</span>
+          <strong id="budgetRemaining">—</strong>
+        </div>
+      </section>
+    </section>
+
+    <section id="historyPage" class="page">
+      <h2>Sales history</h2>
+      <p class="muted">Review your previous transactions.</p>
+      <section class="panel">
+        <h3>Saved transactions</h3>
+        <div id="historyList">
+          <p class="empty">No sales recorded yet.</p>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <nav class="bottom-nav" aria-label="Main navigation">
+    <button class="nav-button active" data-page="posPage">
+      <span>🧾</span>POS
+    </button>
+    <button class="nav-button" data-page="productsPage">
+      <span>📦</span>Products
+    </button>
+    <button class="nav-button" data-page="shoppingPage">
+      <span>🛒</span>Shopping
+    </button>
+    <button class="nav-button" data-page="historyPage">
+      <span>📚</span>History
+    </button>
+  </nav>
+
+  <script type="module" src="./app.js"></script>
+  <script>
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", async () => {
+        try {
+          const registration = await navigator.serviceWorker.register(
+            "./service-worker.js"
+          );
+          console.log("Registered:", registration.scope);
+        } catch (error) {
+          console.error("Registration failed:", error);
+        }
+      });
+    }
+</script>
+<script>
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => {
+      navigator.serviceWorker.register("./sw.js")
+        .then(() => console.log("Olive POS offline support ready"))
+        .catch((error) =>
+          console.error("Service worker registration failed:", error)
+        );
+    });
+  }
+</script>
+</body>
+</html>

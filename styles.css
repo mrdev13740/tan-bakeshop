@@ -1,0 +1,1063 @@
+
+/* =========================================
+   OLIVE POS — TAN & OLIVE THEME
+   Responsive viewport-based layout
+========================================= */
+
+:root {
+  --tan: #d6bd98;
+  --tan-light: #eee0c9;
+  --tan-pale: #f7f0e5;
+
+  --olive: #737b45;
+  --olive-dark: #424a2b;
+  --olive-light: #e9eadb;
+
+  --background: #f5efe4;
+  --surface: #fffdf8;
+  --text: #332f25;
+  --muted: #827b6d;
+  --border: #e4d8c4;
+  --danger: #a4473c;
+
+  --radius: 13px;
+  --shadow: 0 4px 16px rgba(66, 74, 43, 0.06);
+
+  --header-height: clamp(58px, 9vh, 78px);
+  --nav-height: clamp(48px, 7vh, 62px);
+  --page-gap: clamp(8px, 1.2vw, 16px);
+  --page-padding: clamp(10px, 2vw, 26px);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  width: 100%;
+  min-height: 100%;
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding-bottom: 80px;
+  background: var(--background);
+  color: var(--text);
+  font-family: "Segoe UI", Arial, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+button:active {
+  transform: scale(0.98);
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+h1,
+h2,
+h3,
+p {
+  overflow-wrap: anywhere;
+}
+
+/* =========================================
+   HEADER
+========================================= */
+
+.topbar {
+  position: relative;
+  z-index: 20;
+  min-height: var(--header-height);
+  padding: 10px var(--page-padding);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: var(--olive-dark);
+  color: var(--surface);
+  box-shadow: 0 3px 12px rgba(40, 44, 26, 0.12);
+}
+
+.topbar h1 {
+  margin: 0;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(20px, 2.2vw, 27px);
+  font-weight: 500;
+  letter-spacing: -0.5px;
+}
+
+.topbar h1 span {
+  color: var(--tan);
+}
+
+.topbar p {
+  margin: 2px 0 0;
+  color: var(--tan-light);
+  font-size: 12px;
+}
+
+.status {
+  flex-shrink: 0;
+  padding: 6px 11px;
+  border: 1px solid rgba(238, 224, 201, 0.3);
+  border-radius: 30px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--surface);
+  font-size: 12px;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  min-width: 0;
+}
+
+#logoutButton {
+  min-height: 36px;
+  padding: 7px 12px;
+  white-space: nowrap;
+}
+
+/* =========================================
+   MAIN CONTENT
+========================================= */
+
+main {
+  width: 100%;
+  max-width: 1800px;
+  min-width: 0;
+  margin: 0 auto;
+  padding: var(--page-padding);
+}
+
+main > .page {
+  display: none;
+  min-width: 0;
+}
+
+main > .page.active {
+  display: block;
+}
+
+h2 {
+  margin: 0 0 5px;
+  font-size: clamp(22px, 2.5vw, 32px);
+  line-height: 1.25;
+  letter-spacing: -0.7px;
+}
+
+h3 {
+  margin: 0;
+  font-size: clamp(14px, 1.4vw, 17px);
+}
+
+.muted {
+  margin: 0 0 16px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+/* =========================================
+   SUMMARY CARDS
+========================================= */
+
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--page-gap);
+  margin-bottom: var(--page-gap);
+}
+
+.summary-card {
+  min-width: 0;
+  padding: clamp(10px, 1.4vw, 19px);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.summary-card p {
+  margin: 0 0 3px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.summary-card strong {
+  display: block;
+  color: var(--olive-dark);
+  font-size: clamp(18px, 2.1vw, 28px);
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+/* =========================================
+   PANELS
+========================================= */
+
+.panel {
+  min-width: 0;
+  margin-bottom: var(--page-gap);
+  padding: clamp(12px, 1.7vw, 22px);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.panel h3 {
+  margin-bottom: 12px;
+}
+
+.section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.section-heading h3 {
+  margin: 0;
+}
+
+/* =========================================
+   PRODUCT GRID
+========================================= */
+
+.product-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.product-card {
+  min-width: 0;
+  min-height: clamp(76px, 12vh, 112px);
+  padding: clamp(9px, 1.2vw, 15px) 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 5px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  text-align: left;
+  overflow-wrap: anywhere;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.product-card:hover {
+  background: var(--tan-pale);
+  border-color: var(--olive);
+}
+
+.product-card strong {
+  display: block;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.product-card span {
+  color: var(--olive-dark);
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.product-card small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+/* =========================================
+   BUTTONS
+========================================= */
+
+.button {
+  min-height: 36px;
+  max-width: 100%;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 650;
+  transition: background 0.2s, color 0.2s;
+}
+
+.button.primary {
+  background: var(--olive);
+  color: white;
+}
+
+.button.primary:hover {
+  background: var(--olive-dark);
+}
+
+.button.secondary {
+  background: var(--tan-light);
+  color: var(--olive-dark);
+}
+
+.button.secondary:hover {
+  background: var(--tan);
+}
+
+.button.full {
+  width: 100%;
+  min-height: 42px;
+  margin-top: 10px;
+  font-size: 14px;
+}
+
+/* =========================================
+   INPUTS AND LABELS
+========================================= */
+
+label {
+  display: block;
+  margin: 12px 0 5px;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+input,
+select {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  min-height: 39px;
+  padding: 8px 11px;
+  background: #fffefa;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  outline: none;
+}
+
+input::placeholder {
+  color: #aaa08e;
+}
+
+input:focus,
+select:focus {
+  border-color: var(--olive);
+  box-shadow: 0 0 0 3px rgba(115, 123, 69, 0.12);
+}
+
+/* =========================================
+   CART AND TOTALS
+========================================= */
+
+#cartItems {
+  min-width: 0;
+}
+
+.cart-row,
+.shopping-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  margin-bottom: 8px;
+  padding: 8px;
+  background: var(--tan-pale);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.cart-details,
+.shopping-details {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.cart-controls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+
+.cart-controls button {
+  width: 27px;
+  min-width: 27px;
+  height: 27px;
+  min-height: 27px;
+  padding: 0;
+  font-size: 14px;
+  line-height: 1;
+  border-radius: 6px;
+}
+
+.cart-controls span {
+  min-width: 20px;
+  text-align: center;
+  font-size: 13px;
+}
+
+/* Keep Remove readable without enlarging +/- */
+.cart-controls button:last-child {
+  width: auto;
+  min-width: 0;
+  height: 28px;
+  min-height: 28px;
+  padding: 4px 7px;
+  font-size: 11px;
+}
+
+.total-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin: 10px 0;
+}
+
+.total-row strong {
+  flex-shrink: 0;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.grand-total {
+  margin-top: 13px;
+  padding: 11px;
+  border-radius: 8px;
+  background: var(--tan-light);
+  color: var(--olive-dark);
+  font-size: 17px;
+  font-weight: 750;
+}
+
+#changeDue,
+#budgetRemaining {
+  color: var(--olive-dark);
+}
+
+/* =========================================
+   PRODUCT, SHOPPING AND HISTORY LISTS
+========================================= */
+
+#productList,
+#shoppingList,
+#historyList {
+  min-width: 0;
+}
+
+#productList > *,
+#shoppingList > *,
+#historyList > * {
+  overflow-wrap: anywhere;
+}
+
+.empty {
+  margin: 0;
+  padding: 18px 10px;
+  color: var(--muted);
+  text-align: center;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.history-card {
+  min-width: 0;
+  margin-bottom: 9px;
+  padding: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+/* =========================================
+   FORMS
+========================================= */
+
+#productForm,
+#shoppingForm {
+  min-width: 0;
+}
+
+#productForm input[type="hidden"] {
+  display: none;
+}
+
+#productForm .button,
+#shoppingForm .button {
+  margin-top: 12px;
+}
+
+#shoppingBudget {
+  margin-bottom: 15px;
+}
+
+#shoppingForm {
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+/* =========================================
+   BOTTOM NAVIGATION
+========================================= */
+
+.bottom-nav {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 50;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 5px;
+  padding: 7px 3%;
+  padding-bottom: calc(7px + env(safe-area-inset-bottom));
+  background: var(--olive-dark);
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 -4px 18px rgba(40, 44, 26, 0.12);
+}
+
+.nav-button {
+  min-width: 0;
+  min-height: 47px;
+  padding: 5px 4px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--tan-light);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.nav-button span {
+  font-size: 18px;
+  line-height: 1.2;
+}
+
+.nav-button:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.nav-button.active {
+  background: var(--tan);
+  color: var(--olive-dark);
+}
+
+/* =========================================
+   DESKTOP — USE THE ENTIRE VIEWPORT
+========================================= */
+
+@media (min-width: 1001px) {
+  html,
+  body {
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+  }
+
+  body {
+    height: 100vh;
+    height: 100dvh;
+    padding-bottom: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .topbar {
+    flex: 0 0 var(--header-height);
+    min-height: 0;
+    padding: 8px 3%;
+  }
+
+  main {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+    padding: 12px 3%;
+  }
+
+  main > .page.active {
+    height: 100%;
+    min-height: 0;
+  }
+
+  /* POS: products on the left, cart on the right */
+  #posPage.active {
+    display: grid;
+    grid-template-columns: minmax(0, 1.45fr) minmax(300px, 0.85fr);
+    grid-template-rows: auto auto auto minmax(0, 1fr);
+    column-gap: clamp(12px, 1.5vw, 22px);
+    row-gap: 0;
+    height: 100%;
+    min-height: 0;
+  }
+
+  #posPage > h2 {
+    grid-column: 1 / -1;
+    grid-row: 1;
+    margin-bottom: 2px;
+    font-size: clamp(22px, 2vw, 30px);
+  }
+
+  #posPage > .muted {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    margin-bottom: 8px;
+    font-size: 12px;
+  }
+
+  #posPage > .summary-grid {
+    grid-column: 1;
+    grid-row: 3;
+    margin-bottom: 10px;
+  }
+
+  /* The products panel */
+  #posPage > .panel:nth-of-type(1) {
+    grid-column: 1;
+    grid-row: 4;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    margin-bottom: 0;
+    padding: clamp(10px, 1.2vw, 17px);
+  }
+
+  /* The cart panel */
+  #posPage > .panel:nth-of-type(2) {
+    grid-column: 2;
+    grid-row: 3 / 5;
+    height: 100%;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    margin-bottom: 0;
+    padding: clamp(10px, 1.2vw, 17px);
+  }
+
+  .summary-card {
+    padding: clamp(9px, 1vw, 13px);
+    gap: 8px;
+  }
+
+  .summary-card p {
+    font-size: 11px;
+  }
+
+  .summary-card strong {
+    font-size: clamp(18px, 1.8vw, 24px);
+  }
+
+  .product-grid {
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 8px;
+  }
+
+  .product-card {
+    min-height: clamp(70px, 10vh, 94px);
+    padding: 9px;
+  }
+
+  /* Other pages fit the same available height.
+     Their content can scroll inside the page. */
+  main > .page.active:not(#posPage) {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding-right: 8px;
+  }
+
+  .bottom-nav {
+    position: relative;
+    flex: 0 0 var(--nav-height);
+    min-height: 0;
+    padding: 5px 3%;
+    padding-bottom: 5px;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .nav-button {
+    min-height: 38px;
+    flex-direction: row;
+    gap: 7px;
+    font-size: 12px;
+  }
+
+  .nav-button span {
+    font-size: 16px;
+  }
+}
+
+/* =========================================
+   TABLET
+========================================= */
+
+@media (min-width: 601px) and (max-width: 1000px) {
+  :root {
+    --page-padding: 18px;
+  }
+
+  main {
+    padding: 20px var(--page-padding);
+  }
+
+  .product-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+/* =========================================
+   MOBILE
+========================================= */
+
+@media (max-width: 600px) {
+  :root {
+    --header-height: 65px;
+    --nav-height: 58px;
+    --page-padding: 10px;
+    --page-gap: 9px;
+  }
+
+  body {
+    padding-bottom: calc(var(--nav-height) + 14px);
+    font-size: 13px;
+  }
+
+  .topbar {
+    min-height: var(--header-height);
+    padding: 9px 12px;
+    gap: 8px;
+  }
+
+  .topbar h1 {
+    font-size: clamp(18px, 5vw, 23px);
+  }
+
+  .topbar p {
+    font-size: 10px;
+  }
+
+  .status {
+    max-width: 105px;
+    padding: 5px 8px;
+    font-size: 10px;
+    white-space: normal;
+    text-align: center;
+  }
+
+  .header-actions {
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+  }
+
+  #logoutButton {
+    min-height: 30px;
+    padding: 5px 9px;
+    font-size: 11px;
+  }
+
+  main {
+    padding: var(--page-padding);
+  }
+
+  h2 {
+    font-size: clamp(22px, 6vw, 27px);
+  }
+
+  .muted {
+    margin-bottom: 12px;
+    line-height: 1.5;
+  }
+
+  .summary-grid {
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+
+  .summary-card {
+    padding: 11px 9px;
+    gap: 7px;
+    border-radius: 10px;
+  }
+
+  .summary-card p {
+    font-size: 10px;
+  }
+
+  .summary-card strong {
+    font-size: clamp(17px, 5vw, 22px);
+  }
+
+  .panel {
+    margin-bottom: 12px;
+    padding: 13px;
+    border-radius: 11px;
+  }
+
+  .panel h3 {
+    font-size: 15px;
+  }
+
+  .section-heading {
+    gap: 7px;
+    margin-bottom: 10px;
+  }
+
+  .section-heading .button {
+    padding: 7px 9px;
+    font-size: 11px;
+  }
+
+  .product-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .product-card {
+    min-height: 88px;
+    padding: 10px;
+  }
+
+  .product-card strong {
+    font-size: 12px;
+  }
+
+  .product-card span {
+    font-size: 12px;
+  }
+
+  .button {
+    min-height: 36px;
+    padding: 8px 10px;
+    font-size: 12px;
+  }
+
+  .button.full {
+    min-height: 40px;
+  }
+
+  label {
+    margin-top: 10px;
+    font-size: 11px;
+  }
+
+  input,
+  select {
+    min-height: 39px;
+    padding: 8px 9px;
+    font-size: 14px;
+  }
+
+  .total-row {
+    gap: 7px;
+    margin: 8px 0;
+    font-size: 12px;
+  }
+
+  .grand-total {
+    padding: 10px;
+    font-size: 15px;
+  }
+
+  .cart-row,
+  .shopping-row {
+    gap: 5px;
+    padding: 6px;
+  }
+
+  .cart-controls {
+    gap: 3px;
+  }
+
+  .cart-controls button {
+    width: 25px;
+    min-width: 25px;
+    height: 25px;
+    min-height: 25px;
+  }
+
+  .cart-controls button:last-child {
+    height: 25px;
+    min-height: 25px;
+    padding: 3px 5px;
+    font-size: 10px;
+  }
+
+  .cart-controls span {
+    min-width: 16px;
+    font-size: 12px;
+  }
+
+  .bottom-nav {
+    position: fixed;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    min-height: var(--nav-height);
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 3px;
+    padding: 5px 7px;
+    padding-bottom: calc(5px + env(safe-area-inset-bottom));
+  }
+
+  .nav-button {
+    min-height: 46px;
+    padding: 4px 2px;
+    flex-direction: column;
+    gap: 2px;
+    font-size: 10px;
+  }
+
+  .nav-button span {
+    font-size: 17px;
+  }
+}
+
+/* =========================================
+   VERY SMALL PHONES
+========================================= */
+
+@media (max-width: 360px) {
+  :root {
+    --page-padding: 8px;
+  }
+
+  .topbar {
+    padding-right: 9px;
+    padding-left: 9px;
+  }
+
+  .topbar h1 {
+    font-size: 18px;
+  }
+
+  .summary-card {
+    padding: 9px 7px;
+  }
+
+  .summary-card strong {
+    font-size: 17px;
+  }
+
+  .panel {
+    padding: 10px;
+  }
+
+  .product-grid {
+    gap: 6px;
+  }
+
+  .product-card {
+    padding: 8px;
+  }
+
+  .nav-button {
+    font-size: 9px;
+  }
+}
+
+/* =========================================
+   SHORT VIEWPORTS
+========================================= */
+
+@media (max-height: 700px) and (min-width: 1001px) {
+  :root {
+    --header-height: 54px;
+    --nav-height: 42px;
+  }
+
+  .topbar {
+    padding-top: 5px;
+    padding-bottom: 5px;
+  }
+
+  main {
+    padding-top: 8px;
+    padding-bottom: 8px;
+  }
+
+  #posPage > h2 {
+    font-size: 22px;
+  }
+
+  #posPage > .muted {
+    margin-bottom: 5px;
+  }
+
+  .summary-grid {
+    margin-bottom: 7px;
+  }
+
+  .summary-card {
+    padding: 7px 9px;
+  }
+
+  .panel {
+    padding: 9px;
+  }
+
+  .product-card {
+    min-height: 65px;
+    padding: 7px;
+  }
+
+  .button.full {
+    min-height: 34px;
+    margin-top: 6px;
+  }
+
+  label {
+    margin-top: 7px;
+  }
+
+  input,
+  select {
+    min-height: 32px;
+    padding: 5px 8px;
+  }
+
+  .total-row {
+    margin: 6px 0;
+  }
+
+  .grand-total {
+    margin-top: 8px;
+    padding: 8px;
+  }
+}
