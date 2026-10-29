@@ -200,21 +200,29 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   }
 
-  // ==================================================
-  // ONLINE / OFFLINE INDICATOR
-  // ==================================================
+// ==================================================
+// ONLINE / OFFLINE AND SYNC STATUS
+// ==================================================
 
-  function updateConnectionStatus() {
-    const status = $("connectionStatus");
-    if (!status) return;
+function updateConnectionStatus() {
+  const status = $("connectionStatus");
+  if (!status) return;
 
-    status.textContent = navigator.onLine ? "Online" : "Offline";
-    status.classList.toggle("offline", !navigator.onLine);
+  if (!navigator.onLine) {
+    status.textContent =
+      "Offline — saved changes will sync when online";
+    status.classList.add("offline");
+  } else {
+    status.textContent =
+      "Online — checking Firebase sync...";
+    status.classList.remove("offline");
   }
+}
 
-  window.addEventListener("online", updateConnectionStatus);
-  window.addEventListener("offline", updateConnectionStatus);
-  updateConnectionStatus();
+window.addEventListener("online", updateConnectionStatus);
+window.addEventListener("offline", updateConnectionStatus);
+
+updateConnectionStatus();
 
   // ==================================================
   // PRODUCT MANAGEMENT
