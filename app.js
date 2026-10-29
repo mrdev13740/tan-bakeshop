@@ -1,4 +1,3 @@
-
 import {
   collection,
   addDoc,
@@ -8,6 +7,9 @@ import {
   deleteDoc,
   serverTimestamp,
   getDoc,
+  getDocFromCache,
+  getDocs,
+  writeBatch,
   runTransaction
 } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-firestore.js";
 
@@ -22,7 +24,73 @@ document.addEventListener("DOMContentLoaded", async () => {
   const $ = (id) => document.getElementById(id);
 
   // ==================================================
-  // AUTHENTICATION AND LOGOUT
+  // GENERAL HELPERS AND NOTIFICATIONS
+  // ==================================================
+
+  function showMessage(message) {
+    let notice = $("appNotice");
+
+    if (!notice) {
+      notice = document.createElement("p");
+      notice.id = "appNotice";
+      notice.setAttribute("role", "status");
+      notice.setAttribute("aria-live", "polite");
+
+      const header = document.querySelector(".topbar");
+
+      if (header) {
+        header.insertAdjacentElement("afterend", notice);
+      } else {
+        document.body.prepend(notice);
+      }
+    }
+
+    notice.textContent = message;
+  }
+
+  function formatMoney(value) {
+    return new Intl.NumberFormat("en-PH", {
+      style: "currency",
+      currency: "PHP"
+    }).format(Number(value) || 0);
+  }
+
+  function makeElement(tag, className = "", text = "") {
+    const element = document.createElement(tag);
+
+    if (className) element.className = className;
+
+    element.textContent = text;
+
+    return element;
+  }
+
+  function makeButton(text, className, onClick) {
+    const button = makeElement("button", className, text);
+
+    button.type = "button";
+    button.addEventListener("click", onClick);
+
+    return button;
+  }
+
+  function showEmpty(container, message) {
+    if (container) {
+      container.append(makeElement("p", "empty", message));
+    }
+  }
+
+  function waitForUser() {
+    return new Promise((resolve) => {
+      const unsubscribe = onAuthStateChanged(auth, (user) => {
+        unsubscribe();
+        resolve(user);
+      });
+    });
+  }
+
+  // ==================================================
+  // AUTHENTICATION AND OFFLINE STAFF VERIFICATION
   // ==================================================
 
   const logoutButton = $("logoutButton");
@@ -38,22 +106,17 @@ document.addEventListener("DOMContentLoaded", async () => {
       window.location.replace("./login.html");
     } catch (error) {
       console.error("Logout failed:", error);
-      alert("Unable to log out. Please try again.");
+
+      showMessage("Unable to log out. Please try again.");
+
       logoutButton.disabled = false;
       logoutButton.textContent = "Logout";
     }
   });
 
-  function waitForUser() {
-    return new Promise((resolve) => {
-      const unsubscribe = onAuthStateChanged(auth, (user) => {
-        unsubscribe();
-        resolve(user);
-      });
-    });
-  }
-
   try {
+    await offlineReady;
+
     const user = await waitForUser();
 
     if (!user) {
@@ -61,22 +124,45 @@ document.addEventListener("DOMContentLoaded", async () => {
       return;
     }
 
-    const staffSnapshot = await getDoc(doc(db, "staff", user.uid));
+    let staffSnapshot;
+
+    try {
+      staffSnapshot = await getDoc(doc(db, "staff", user.uid));
+    } catch (onlineCheckError) {
+      if (!navigator.onLine) {
+        try {
+          staffSnapshot = await getDocFromCache(
+            doc(db, "staff", user.uid)
+          );
+        } catch (cacheError) {
+          throw new Error(
+            "Staff approval is not available offline. Connect to the internet and open the app once before using it offline."
+          );
+        }
+      } else {
+        throw onlineCheckError;
+      }
+    }
 
     if (
       !staffSnapshot.exists() ||
       staffSnapshot.data().approved !== true
     ) {
-      await signOut(auth);
+      if (navigator.onLine) {
+        await signOut(auth);
+      }
+
       window.location.replace("./login.html");
       return;
     }
 
-    await offlineReady;
   } catch (error) {
     console.error("Authentication check failed:", error);
-    document.body.textContent =
-      "Unable to verify staff access. Please reconnect to the internet and reload.";
+
+    document.body.textContent = navigator.onLine
+      ? "Unable to verify staff access. Please reload and try again."
+      : "Unable to verify staff access offline. Connect to the internet and open the app once so staff approval can be cached.";
+
     return;
   }
 
@@ -87,6 +173,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const navButtons = document.querySelectorAll(
     ".bottom-nav .nav-button"
   );
+
   const pages = document.querySelectorAll(".page");
 
   const productForm = $("productForm");
@@ -116,47 +203,40 @@ document.addEventListener("DOMContentLoaded", async () => {
   let cart = [];
   let shoppingItems = [];
   let sales = [];
+
   let isCheckingOut = false;
 
+  let productSnapshotFromServer = false;
+  let salesSnapshotFromServer = false;
+  let shoppingSnapshotFromServer = false;
+
   // ==================================================
-  // GENERAL HELPERS
+  // PAGE NAVIGATION
   // ==================================================
-
-  function showMessage(message) {
-    let notice = $("appNotice");
-
-    if (!notice) {
-      notice = document.createElement("p");
-      notice.id = "appNotice";
-      notice.setAttribute("role", "status");
-
-      const header = document.querySelector(".topbar");
-
-      if (header) {
-        header.insertAdjacentElement("afterend", notice);
-      } else {
-        document.body.prepend(notice);
-      }
-    }
-
-    notice.textContent = message;
-  }
 
   function openPage(targetId) {
     const targetPage = $(targetId);
+
     if (!targetPage) return;
 
-    pages.forEach((page) => page.classList.remove("active"));
-    navButtons.forEach((button) => button.classList.remove("active"));
+    pages.forEach((page) => {
+      page.classList.remove("active");
+    });
+
+    navButtons.forEach((button) => {
+      button.classList.remove("active");
+    });
 
     targetPage.classList.add("active");
 
-    const matchingNav = document.querySelector(
-      `.nav-button[data-page="${targetId}"]`
-    );
+    document
+      .querySelector(`.nav-button[data-page="${targetId}"]`)
+      ?.classList.add("active");
 
-    matchingNav?.classList.add("active");
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    window.scrollTo({
+      top: 0,
+      behavior: "smooth"
+    });
   }
 
   navButtons.forEach((button) => {
@@ -171,70 +251,67 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
   });
 
-  function formatMoney(value) {
-    return new Intl.NumberFormat("en-PH", {
-      style: "currency",
-      currency: "PHP"
-    }).format(Number(value) || 0);
-  }
+  // ==================================================
+  // CONNECTION STATUS AND AUTO-SYNC NOTIFICATIONS
+  // ==================================================
 
-  function makeElement(tag, className = "", text = "") {
-    const element = document.createElement(tag);
+  function updateConnectionStatus() {
+    const status = $("connectionStatus");
 
-    if (className) element.className = className;
-    element.textContent = text;
+    if (!status) return;
 
-    return element;
-  }
+    if (!navigator.onLine) {
+      status.textContent =
+        "Offline — saved changes will sync when online";
 
-  function makeButton(text, className, onClick) {
-    const button = makeElement("button", className, text);
-    button.type = "button";
-    button.addEventListener("click", onClick);
-    return button;
-  }
+      status.classList.add("offline");
 
-  function showEmpty(container, message) {
-    if (container) {
-      container.append(makeElement("p", "empty", message));
+      showMessage(
+        "You are offline. Supported changes are saved locally and will sync when online."
+      );
+
+      return;
     }
-  }
 
-// ==================================================
-// ONLINE / OFFLINE AND SYNC STATUS
-// ==================================================
-
-function updateConnectionStatus() {
-  const status = $("connectionStatus");
-  if (!status) return;
-
-  if (!navigator.onLine) {
-    status.textContent =
-      "Offline — saved changes will sync when online";
-    status.classList.add("offline");
-  } else {
-    status.textContent =
-      "Online — checking Firebase sync...";
     status.classList.remove("offline");
+
+    const allServerConfirmed =
+      productSnapshotFromServer &&
+      salesSnapshotFromServer &&
+      shoppingSnapshotFromServer;
+
+    status.textContent = allServerConfirmed
+      ? "Online — synced with Firebase"
+      : "Online — syncing with Firebase...";
   }
-}
 
-window.addEventListener("online", updateConnectionStatus);
-window.addEventListener("offline", updateConnectionStatus);
+  window.addEventListener("online", () => {
+    updateConnectionStatus();
 
-updateConnectionStatus();
+    showMessage(
+      "Connection restored. Checking and syncing pending changes with Firebase..."
+    );
+  });
+
+  window.addEventListener("offline", updateConnectionStatus);
+
+  updateConnectionStatus();
 
   // ==================================================
-  // PRODUCT MANAGEMENT
+  // PRODUCT MANAGEMENT AND POS PRODUCT CARDS
   // ==================================================
 
   function makeProductCard(product, forPOS = false) {
     const card = makeElement("article", "product-card");
 
     card.append(
-      makeElement("h3", "", product.name),
+      makeElement("h3", "", product.name || "Unnamed product"),
       makeElement("p", "", formatMoney(product.price)),
-      makeElement("p", "muted", `Stock: ${product.stock}`)
+      makeElement(
+        "p",
+        "muted",
+        `Stock: ${Number(product.stock) || 0}`
+      )
     );
 
     if (forPOS) {
@@ -242,17 +319,22 @@ updateConnectionStatus();
         makeElement(
           "p",
           "muted",
-          product.stock > 0 ? "Available" : "Out of stock"
+          Number(product.stock) > 0
+            ? "Available"
+            : "Out of stock"
         )
       );
 
       const addButton = makeButton(
-        product.stock > 0 ? "Add to cart" : "Out of stock",
+        Number(product.stock) > 0
+          ? "Add to cart"
+          : "Out of stock",
         "button primary full",
         () => addToCart(product.id)
       );
 
-      addButton.disabled = product.stock <= 0;
+      addButton.disabled = Number(product.stock) <= 0;
+
       card.append(addButton);
 
       return card;
@@ -267,22 +349,39 @@ updateConnectionStatus();
       productStock.value = product.stock;
 
       openPage("productsPage");
+
       productName.focus();
     });
 
-    const deleteButton = makeButton("Delete", "button", async () => {
-      if (!confirm(`Delete "${product.name}"? This cannot be undone.`)) {
-        return;
-      }
+    const deleteButton = makeButton(
+      "Delete",
+      "button",
+      async () => {
+        if (
+          !confirm(
+            `Delete "${product.name}"? This cannot be undone.`
+          )
+        ) {
+          return;
+        }
 
-      try {
-        await deleteDoc(doc(db, "products", product.id));
-        showMessage("Product deleted.");
-      } catch (error) {
-        console.error("Delete product failed:", error);
-        showMessage("Could not delete product. Check Firestore rules.");
+        try {
+          await deleteDoc(doc(db, "products", product.id));
+
+          showMessage(
+            navigator.onLine
+              ? "Product deleted."
+              : "Product deletion queued locally; it should sync when online."
+          );
+        } catch (error) {
+          console.error("Delete product failed:", error);
+
+          showMessage(
+            "Could not delete product. Check connection and Firestore rules."
+          );
+        }
       }
-    });
+    );
 
     actions.append(editButton, deleteButton);
     card.append(actions);
@@ -296,7 +395,12 @@ updateConnectionStatus();
 
     if (!products.length) {
       showEmpty(productList, "No products added yet.");
-      showEmpty(posProducts, "No products available.");
+
+      showEmpty(
+        posProducts,
+        "No products available. Add products or reconnect to load saved products."
+      );
+
       return;
     }
 
@@ -323,6 +427,7 @@ updateConnectionStatus();
       showMessage(
         "Enter a product name, a price greater than zero, and a whole-number stock."
       );
+
       return;
     }
 
@@ -332,6 +437,8 @@ updateConnectionStatus();
 
     if (saveButton) saveButton.disabled = true;
 
+    const editingProduct = Boolean(productId.value);
+
     try {
       const data = {
         name,
@@ -340,31 +447,58 @@ updateConnectionStatus();
         updatedAt: serverTimestamp()
       };
 
-      if (productId.value) {
-        await updateDoc(
+      let writePromise;
+
+      if (editingProduct) {
+        writePromise = updateDoc(
           doc(db, "products", productId.value),
           data
         );
-
-        showMessage("Product updated.");
       } else {
-        await addDoc(collection(db, "products"), {
+        writePromise = addDoc(collection(db, "products"), {
           ...data,
           createdAt: serverTimestamp()
         });
-
-        showMessage("Product added.");
       }
 
-      productForm.reset();
-      productId.value = "";
+      if (!navigator.onLine) {
+        showMessage(
+          "Offline — product change is queued locally and will sync when online if Firestore persistence is available."
+        );
+
+        productForm.reset();
+
+        if (productId) productId.value = "";
+
+        writePromise
+          .then(() => {
+            showMessage("Product change synced with Firebase.");
+          })
+          .catch((error) => {
+            console.error("Queued product write failed:", error);
+
+            showMessage(
+              "Product change did not sync. Reconnect and try again."
+            );
+          });
+      } else {
+        await writePromise;
+
+        showMessage(
+          editingProduct
+            ? "Product updated and saved to Firebase."
+            : "Product added and saved to Firebase."
+        );
+
+        productForm.reset();
+
+        if (productId) productId.value = "";
+      }
     } catch (error) {
       console.error("Saving product failed:", error);
 
       showMessage(
-        navigator.onLine
-          ? "Could not save product. Check Firestore permissions."
-          : "Offline: change may be queued. Reconnect and verify synchronization."
+        "Could not save product. Check your connection and Firestore permissions."
       );
     } finally {
       if (saveButton) saveButton.disabled = false;
@@ -384,7 +518,11 @@ updateConnectionStatus();
 
   function getDiscount() {
     const discount = Number(discountInput?.value) || 0;
-    return Math.min(Math.max(discount, 0), getSubtotal());
+
+    return Math.min(
+      Math.max(discount, 0),
+      getSubtotal()
+    );
   }
 
   function getGrandTotal() {
@@ -395,9 +533,10 @@ updateConnectionStatus();
     if (!cashInput || !changeElement) return;
 
     const cash = Number(cashInput.value) || 0;
-    const change = cash - getGrandTotal();
 
-    changeElement.textContent = formatMoney(Math.max(0, change));
+    changeElement.textContent = formatMoney(
+      Math.max(0, cash - getGrandTotal())
+    );
   }
 
   function renderCart() {
@@ -430,13 +569,17 @@ updateConnectionStatus();
         makeButton("−", "button secondary", () => {
           changeCartQuantity(item.id, -1);
         }),
+
         makeElement("span", "", String(item.quantity)),
-        makeButton("+", "button secondary", () => {
+
+        makeButton("＋", "button secondary", () => {
           changeCartQuantity(item.id, 1);
         }),
+
         makeButton("Remove", "button", () => {
           cart = cart.filter((entry) => entry.id !== item.id);
           renderCart();
+          showMessage(`${item.name} removed from cart.`);
         })
       );
 
@@ -459,16 +602,16 @@ updateConnectionStatus();
     const product = products.find((item) => item.id === id);
 
     if (!product) {
-      showMessage("Product not found.");
-      return;
+      return showMessage(
+        "Product not found in the loaded product list."
+      );
     }
 
     const current = cart.find((item) => item.id === id);
     const quantity = current ? current.quantity : 0;
 
     if (quantity >= Number(product.stock)) {
-      showMessage("Not enough stock available.");
-      return;
+      return showMessage("Not enough stock available.");
     }
 
     if (current) {
@@ -483,6 +626,10 @@ updateConnectionStatus();
     }
 
     renderCart();
+
+    showMessage(
+      `${product.name} added to cart. Checkout still requires internet to verify stock safely.`
+    );
   }
 
   function changeCartQuantity(id, amount) {
@@ -496,8 +643,7 @@ updateConnectionStatus();
     if (nextQuantity <= 0) {
       cart = cart.filter((entry) => entry.id !== id);
     } else if (nextQuantity > Number(product.stock)) {
-      showMessage("Quantity exceeds available stock.");
-      return;
+      return showMessage("Quantity exceeds available stock.");
     } else {
       item.quantity = nextQuantity;
     }
@@ -511,26 +657,27 @@ updateConnectionStatus();
   $("clearCart")?.addEventListener("click", () => {
     cart = [];
     renderCart();
+
     showMessage("Cart cleared.");
   });
 
   // ==================================================
-  // CHECKOUT AND STOCK UPDATES
+  // CHECKOUT
+  // Checkout requires internet for accurate stock and sales.
   // ==================================================
 
   $("completeSale")?.addEventListener("click", async () => {
     if (isCheckingOut) return;
 
     if (!cart.length) {
-      showMessage("Add at least one product to the cart.");
-      return;
+      return showMessage("Add at least one product to the cart.");
     }
 
-    // A transaction is required to safely validate shared stock.
     if (!navigator.onLine) {
       showMessage(
-        "Checkout requires an internet connection to verify stock safely."
+        "Offline mode: you can build the cart, but checkout is disabled until internet returns so stock and sales remain accurate."
       );
+
       return;
     }
 
@@ -540,8 +687,15 @@ updateConnectionStatus();
     const cash = Number(cashInput?.value);
 
     if (!Number.isFinite(cash) || cash < total) {
-      showMessage("Cash received must be equal to or greater than the total.");
-      return;
+      return showMessage(
+        "Cash received must be equal to or greater than the total."
+      );
+    }
+
+    if (!auth.currentUser) {
+      return showMessage(
+        "Your staff session is unavailable. Please sign in again."
+      );
     }
 
     const checkoutButton = $("completeSale");
@@ -559,13 +713,14 @@ updateConnectionStatus();
       await runTransaction(db, async (transaction) => {
         const freshProducts = [];
 
-        // Read all products first.
         for (const item of cartForSale) {
           const productRef = doc(db, "products", item.id);
           const snapshot = await transaction.get(productRef);
 
           if (!snapshot.exists()) {
-            throw new Error(`Product "${item.name}" no longer exists.`);
+            throw new Error(
+              `Product "${item.name}" no longer exists.`
+            );
           }
 
           const data = snapshot.data();
@@ -579,8 +734,13 @@ updateConnectionStatus();
 
           const currentPrice = Number(data.price);
 
-          if (!Number.isFinite(currentPrice) || currentPrice < 0) {
-            throw new Error(`Invalid price for "${data.name}".`);
+          if (
+            !Number.isFinite(currentPrice) ||
+            currentPrice < 0
+          ) {
+            throw new Error(
+              `Invalid price for "${data.name}".`
+            );
           }
 
           freshProducts.push({
@@ -590,7 +750,6 @@ updateConnectionStatus();
           });
         }
 
-        // Update stock only after all products pass validation.
         for (const item of freshProducts) {
           transaction.update(item.ref, {
             stock: Number(item.data.stock) - item.quantity,
@@ -598,7 +757,6 @@ updateConnectionStatus();
           });
         }
 
-        // Create the sale record.
         transaction.set(saleRef, {
           items: cartForSale.map((item) => ({
             productId: item.id,
@@ -607,6 +765,7 @@ updateConnectionStatus();
             quantity: item.quantity,
             lineTotal: item.price * item.quantity
           })),
+
           subtotal,
           discount,
           total,
@@ -623,9 +782,13 @@ updateConnectionStatus();
       if (cashInput) cashInput.value = "";
 
       renderCart();
-      showMessage("Sale completed! Stock and sales history were updated.");
+
+      showMessage(
+        "Sale saved to Firebase! Stock and sales history were updated."
+      );
     } catch (error) {
       console.error("Checkout failed:", error);
+
       showMessage(
         error.message || "Sale failed. Check your connection and try again."
       );
@@ -640,7 +803,7 @@ updateConnectionStatus();
   });
 
   // ==================================================
-  // SHARED SHOPPING LIST AND BUDGET CALCULATOR
+  // SHOPPING LIST AND BUDGET
   // ==================================================
 
   function renderShopping() {
@@ -673,15 +836,51 @@ updateConnectionStatus();
         )
       );
 
-      const removeButton = makeButton("Remove", "button", async () => {
-        try {
-          await deleteDoc(doc(db, "shoppingItems", item.id));
-          showMessage("Shopping item removed.");
-        } catch (error) {
-          console.error("Removing shopping item failed:", error);
-          showMessage("Could not remove item. Check connection and permissions.");
+      const removeButton = makeButton(
+        "Remove",
+        "button",
+        async () => {
+          try {
+            const deletion = deleteDoc(
+              doc(db, "shoppingItems", item.id)
+            );
+
+            if (!navigator.onLine) {
+              showMessage(
+                "Offline — removal queued locally and should sync when online."
+              );
+
+              deletion
+                .then(() => {
+                  showMessage("Shopping item removal synced with Firebase.");
+                })
+                .catch((error) => {
+                  console.error(
+                    "Queued shopping deletion failed:",
+                    error
+                  );
+
+                  showMessage(
+                    "Shopping item removal did not sync. Reconnect and try again."
+                  );
+                });
+            } else {
+              await deletion;
+
+              showMessage("Shopping item removed and synced.");
+            }
+          } catch (error) {
+            console.error(
+              "Removing shopping item failed:",
+              error
+            );
+
+            showMessage(
+              "Could not remove item. Check connection and permissions."
+            );
+          }
         }
-      });
+      );
 
       row.append(details, removeButton);
       shoppingList.append(row);
@@ -696,11 +895,14 @@ updateConnectionStatus();
         budgetRemaining.textContent = "—";
         budgetRemaining.classList.remove("over-budget");
       } else {
-        const budget = Number(shoppingBudget.value);
-        const remaining = budget - total;
+        const remaining = Number(shoppingBudget.value) - total;
 
         budgetRemaining.textContent = formatMoney(remaining);
-        budgetRemaining.classList.toggle("over-budget", remaining < 0);
+
+        budgetRemaining.classList.toggle(
+          "over-budget",
+          remaining < 0
+        );
       }
     }
   }
@@ -719,36 +921,74 @@ updateConnectionStatus();
       !Number.isInteger(quantity) ||
       quantity < 1
     ) {
-      showMessage("Enter a valid item name, price, and whole-number quantity.");
-      return;
+      return showMessage(
+        "Enter a valid item name, price, and whole-number quantity."
+      );
+    }
+
+    if (!auth.currentUser) {
+      return showMessage("Please sign in again before adding an item.");
     }
 
     try {
-      await addDoc(collection(db, "shoppingItems"), {
-        name,
-        price,
-        quantity,
-        createdAt: serverTimestamp(),
-        addedBy: auth.currentUser.uid
-      });
+      const writePromise = addDoc(
+        collection(db, "shoppingItems"),
+        {
+          name,
+          price,
+          quantity,
+          createdAt: serverTimestamp(),
+          addedBy: auth.currentUser.uid
+        }
+      );
 
-      shoppingForm.reset();
+      if (!navigator.onLine) {
+        shoppingForm.reset();
 
-      if ($("shoppingQty")) {
-        $("shoppingQty").value = "1";
+        if ($("shoppingQty")) {
+          $("shoppingQty").value = "1";
+        }
+
+        showMessage(
+          "Offline — shopping item queued locally and should sync when online."
+        );
+
+        writePromise
+          .then(() => {
+            showMessage("Shopping item synced with Firebase.");
+          })
+          .catch((error) => {
+            console.error("Queued shopping write failed:", error);
+
+            showMessage(
+              "Shopping item did not sync. Reconnect and try again."
+            );
+          });
+      } else {
+        await writePromise;
+
+        shoppingForm.reset();
+
+        if ($("shoppingQty")) {
+          $("shoppingQty").value = "1";
+        }
+
+        showMessage("Item added and saved to Firebase.");
       }
-
-      showMessage("Item added to the shared shopping list.");
     } catch (error) {
       console.error("Adding shopping item failed:", error);
-      showMessage("Could not add item. Check connection and Firestore rules.");
+
+      showMessage(
+        "Could not add item. Check connection and Firestore rules."
+      );
     }
   });
 
   shoppingBudget?.addEventListener("input", renderShopping);
 
   // ==================================================
-  // SALES HISTORY AND TODAY'S TOTALS
+  // SALES HISTORY
+  // DELETE INDIVIDUAL SALE AND CLEAR ALL HISTORY
   // ==================================================
 
   function toDate(timestamp) {
@@ -756,7 +996,9 @@ updateConnectionStatus();
       return timestamp.toDate();
     }
 
-    if (timestamp instanceof Date) return timestamp;
+    if (timestamp instanceof Date) {
+      return timestamp;
+    }
 
     return null;
   }
@@ -767,9 +1009,10 @@ updateConnectionStatus();
     historyList.replaceChildren();
 
     const sortedSales = [...sales].sort((a, b) => {
-      const dateA = toDate(a.createdAt)?.getTime() || 0;
-      const dateB = toDate(b.createdAt)?.getTime() || 0;
-      return dateB - dateA;
+      return (
+        (toDate(b.createdAt)?.getTime() || 0) -
+        (toDate(a.createdAt)?.getTime() || 0)
+      );
     });
 
     if (!sortedSales.length) {
@@ -804,6 +1047,43 @@ updateConnectionStatus();
         )
       );
 
+      const deleteButton = makeButton(
+        "Delete sale",
+        "button",
+        async () => {
+          if (!navigator.onLine) {
+            return showMessage(
+              "Connect to the internet before deleting a sales record."
+            );
+          }
+
+          if (
+            !confirm(
+              "Permanently delete this sales record? This cannot be undone."
+            )
+          ) {
+            return;
+          }
+
+          deleteButton.disabled = true;
+
+          try {
+            await deleteDoc(doc(db, "sales", sale.id));
+
+            showMessage("Sales record deleted from Firebase.");
+          } catch (error) {
+            console.error("Delete sale failed:", error);
+
+            showMessage(
+              "Could not delete this sale. Check Firestore rules and connection."
+            );
+
+            deleteButton.disabled = false;
+          }
+        }
+      );
+
+      card.append(deleteButton);
       historyList.append(card);
     });
 
@@ -812,10 +1092,12 @@ updateConnectionStatus();
     const todaySales = sortedSales.filter((sale) => {
       const date = toDate(sale.createdAt);
 
-      return date &&
+      return (
+        date &&
         date.getFullYear() === now.getFullYear() &&
         date.getMonth() === now.getMonth() &&
-        date.getDate() === now.getDate();
+        date.getDate() === now.getDate()
+      );
     });
 
     if ($("todaySales")) {
@@ -832,8 +1114,82 @@ updateConnectionStatus();
     }
   }
 
+  // Add a Clear All History button if it is missing from index.html.
+  let clearHistoryButton = $("clearHistory");
+
+  if (!clearHistoryButton && historyList) {
+    clearHistoryButton = makeButton(
+      "Clear All History",
+      "button",
+      () => {}
+    );
+
+    clearHistoryButton.id = "clearHistory";
+
+    historyList.insertAdjacentElement(
+      "beforebegin",
+      clearHistoryButton
+    );
+  }
+
+  clearHistoryButton?.addEventListener("click", async () => {
+    if (!navigator.onLine) {
+      return showMessage(
+        "Connect to the internet before clearing sales history."
+      );
+    }
+
+    if (
+      !confirm(
+        "Permanently delete ALL sales history? This cannot be undone. Export a backup first if you need these records."
+      )
+    ) {
+      return;
+    }
+
+    const button = clearHistoryButton;
+
+    if (button) {
+      button.disabled = true;
+      button.textContent = "Deleting...";
+    }
+
+    try {
+      const snapshot = await getDocs(collection(db, "sales"));
+      const saleDocs = snapshot.docs;
+
+      // Firestore batches allow up to 500 write operations.
+      for (let i = 0; i < saleDocs.length; i += 450) {
+        const batch = writeBatch(db);
+
+        saleDocs
+          .slice(i, i + 450)
+          .forEach((saleDoc) => {
+            batch.delete(saleDoc.ref);
+          });
+
+        await batch.commit();
+      }
+
+      showMessage(
+        `Deleted ${saleDocs.length} sales record(s). History cleared.`
+      );
+    } catch (error) {
+      console.error("Clear history failed:", error);
+
+      showMessage(
+        "Could not clear all history. Some records may remain; check connection and permissions."
+      );
+    } finally {
+      if (button) {
+        button.disabled = false;
+        button.textContent = "Clear All History";
+      }
+    }
+  });
+
   // ==================================================
-  // REAL-TIME FIRESTORE SYNCHRONIZATION
+  // REAL-TIME FIRESTORE LISTENERS
   // ==================================================
 
   onSnapshot(
@@ -845,18 +1201,35 @@ updateConnectionStatus();
         ...item.data()
       }));
 
+      productSnapshotFromServer =
+        !snapshot.metadata.fromCache &&
+        !snapshot.metadata.hasPendingWrites;
+
       renderProducts();
       renderCart();
 
-      showMessage(
-        snapshot.metadata.fromCache
-          ? "Showing cached products. Cloud updates may be pending."
-          : "Products synced with Firebase."
-      );
+      if (snapshot.metadata.hasPendingWrites) {
+        showMessage(
+          "Saving product changes — they will sync with Firebase when the connection is available."
+        );
+      } else if (snapshot.metadata.fromCache) {
+        showMessage(
+          navigator.onLine
+            ? "Showing cached products. Waiting for Firebase confirmation..."
+            : "Offline — showing saved products. Pending changes will sync when online."
+        );
+      } else {
+        showMessage("Products synced with Firebase.");
+      }
+
+      updateConnectionStatus();
     },
     (error) => {
       console.error("Loading products failed:", error);
-      showMessage("Could not load products. Check Firestore rules.");
+
+      showMessage(
+        "Could not load products. Check connection and Firestore rules."
+      );
     }
   );
 
@@ -869,11 +1242,19 @@ updateConnectionStatus();
         ...item.data()
       }));
 
+      salesSnapshotFromServer =
+        !snapshot.metadata.fromCache &&
+        !snapshot.metadata.hasPendingWrites;
+
       renderHistory();
+      updateConnectionStatus();
     },
     (error) => {
       console.error("Loading sales failed:", error);
-      showMessage("Could not load sales history. Check Firestore rules.");
+
+      showMessage(
+        "Could not load sales history. Check connection and Firestore rules."
+      );
     }
   );
 
@@ -886,11 +1267,19 @@ updateConnectionStatus();
         ...item.data()
       }));
 
+      shoppingSnapshotFromServer =
+        !snapshot.metadata.fromCache &&
+        !snapshot.metadata.hasPendingWrites;
+
       renderShopping();
+      updateConnectionStatus();
     },
     (error) => {
       console.error("Loading shopping list failed:", error);
-      showMessage("Could not load shopping list. Check Firestore rules.");
+
+      showMessage(
+        "Could not load shopping list. Check connection and Firestore rules."
+      );
     }
   );
 
