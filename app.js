@@ -24,7 +24,43 @@ document.addEventListener("DOMContentLoaded", async () => {
   const $ = (id) => document.getElementById(id);
 
   // ==================================================
-  // GENERAL HELPERS AND NOTIFICATIONS
+  // LOCAL OFFLINE SALES QUEUE
+  // Only successfully synchronized sales are removed.
+  // ==================================================
+
+  const QUEUE_KEY = "olivePOS_pendingSales_v1";
+
+  function readQueue() {
+    try {
+      const data = JSON.parse(localStorage.getItem(QUEUE_KEY) || "[]");
+      return Array.isArray(data) ? data : [];
+    } catch (error) {
+      console.error("Could not read offline sales queue:", error);
+      return [];
+    }
+  }
+
+  function saveQueue(queue) {
+    try {
+      localStorage.setItem(QUEUE_KEY, JSON.stringify(queue));
+      updatePendingIndicator();
+      return true;
+    } catch (error) {
+      console.error("Could not save offline sales:", error);
+
+      showMessage(
+        "Unable to store the sale locally. Check available phone storage and browser settings."
+      );
+
+      return false;
+    }
+  }
+
+  let pendingSales = readQueue();
+  let syncingSales = false;
+
+  // ==================================================
+  // GENERAL HELPERS
   // ==================================================
 
   function showMessage(message) {
@@ -67,10 +103,8 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   function makeButton(text, className, onClick) {
     const button = makeElement("button", className, text);
-
     button.type = "button";
     button.addEventListener("click", onClick);
-
     return button;
   }
 
@@ -89,8 +123,58 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
   }
 
+  function makeSaleId() {
+    if (globalThis.crypto?.randomUUID) {
+      return globalThis.crypto.randomUUID();
+    }
+
+    return (
+      "sale_" +
+      Date.now() +
+      "_" +
+      Math.random().toString(36).slice(2, 12)
+    );
+  }
+
+  function updatePendingIndicator() {
+    const count = pendingSales.length;
+
+    let indicator = $("pendingSyncStatus");
+
+    if (!indicator) {
+      indicator = makeElement("p");
+      indicator.id = "pendingSyncStatus";
+      indicator.setAttribute("role", "status");
+      indicator.setAttribute("aria-live", "polite");
+
+      const header = document.querySelector(".topbar");
+
+      if (header) {
+        header.insertAdjacentElement("afterend", indicator);
+      } else {
+        document.body.prepend(indicator);
+      }
+    }
+
+    if (!navigator.onLine) {
+      indicator.textContent =
+        `OFFLINE — ${count} sale(s) waiting to sync`;
+      indicator.className = "offline";
+    } else if (count > 0) {
+      indicator.textContent =
+        `SYNC PENDING — ${count} sale(s) waiting to upload`;
+      indicator.className = "sync-pending";
+    } else if (syncingSales) {
+      indicator.textContent = "SYNCING SALES...";
+      indicator.className = "syncing";
+    } else {
+      indicator.textContent = "ONLINE — no pending sales";
+      indicator.className = "synced";
+    }
+  }
+
   // ==================================================
-  // AUTHENTICATION AND OFFLINE STAFF VERIFICATION
+  // AUTHENTICATION AND STAFF VERIFICATION
   // ==================================================
 
   const logoutButton = $("logoutButton");
@@ -98,28 +182,36 @@ document.addEventListener("DOMContentLoaded", async () => {
   logoutButton?.addEventListener("click", async () => {
     if (!confirm("Are you sure you want to log out?")) return;
 
+    if (pendingSales.length > 0) {
+      const proceed = confirm(
+        `${pendingSales.length} sale(s) have not synced. ` +
+        "They will remain on this device, but keep this device's " +
+        "browser data safe until synchronization finishes. Log out?"
+      );
+
+      if (!proceed) return;
+    }
+
     logoutButton.disabled = true;
-    logoutButton.textContent = "Logging out...";
 
     try {
       await signOut(auth);
       window.location.replace("./login.html");
     } catch (error) {
       console.error("Logout failed:", error);
-
       showMessage("Unable to log out. Please try again.");
-
       logoutButton.disabled = false;
-      logoutButton.textContent = "Logout";
     }
   });
+
+  let currentUser;
 
   try {
     await offlineReady;
 
-    const user = await waitForUser();
+    currentUser = await waitForUser();
 
-    if (!user) {
+    if (!currentUser) {
       window.location.replace("./login.html");
       return;
     }
@@ -127,20 +219,16 @@ document.addEventListener("DOMContentLoaded", async () => {
     let staffSnapshot;
 
     try {
-      staffSnapshot = await getDoc(doc(db, "staff", user.uid));
-    } catch (onlineCheckError) {
+      staffSnapshot = await getDoc(
+        doc(db, "staff", currentUser.uid)
+      );
+    } catch (error) {
       if (!navigator.onLine) {
-        try {
-          staffSnapshot = await getDocFromCache(
-            doc(db, "staff", user.uid)
-          );
-        } catch (cacheError) {
-          throw new Error(
-            "Staff approval is not available offline. Connect to the internet and open the app once before using it offline."
-          );
-        }
+        staffSnapshot = await getDocFromCache(
+          doc(db, "staff", currentUser.uid)
+        );
       } else {
-        throw onlineCheckError;
+        throw error;
       }
     }
 
@@ -148,20 +236,17 @@ document.addEventListener("DOMContentLoaded", async () => {
       !staffSnapshot.exists() ||
       staffSnapshot.data().approved !== true
     ) {
-      if (navigator.onLine) {
-        await signOut(auth);
-      }
+      if (navigator.onLine) await signOut(auth);
 
       window.location.replace("./login.html");
       return;
     }
-
   } catch (error) {
-    console.error("Authentication check failed:", error);
+    console.error("Staff verification failed:", error);
 
     document.body.textContent = navigator.onLine
       ? "Unable to verify staff access. Please reload and try again."
-      : "Unable to verify staff access offline. Connect to the internet and open the app once so staff approval can be cached.";
+      : "Staff approval could not be verified offline. Open the app online first to cache the approval record.";
 
     return;
   }
@@ -216,16 +301,10 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   function openPage(targetId) {
     const targetPage = $(targetId);
-
     if (!targetPage) return;
 
-    pages.forEach((page) => {
-      page.classList.remove("active");
-    });
-
-    navButtons.forEach((button) => {
-      button.classList.remove("active");
-    });
+    pages.forEach((page) => page.classList.remove("active"));
+    navButtons.forEach((button) => button.classList.remove("active"));
 
     targetPage.classList.add("active");
 
@@ -233,108 +312,107 @@ document.addEventListener("DOMContentLoaded", async () => {
       .querySelector(`.nav-button[data-page="${targetId}"]`)
       ?.classList.add("active");
 
-    window.scrollTo({
-      top: 0,
-      behavior: "smooth"
-    });
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   navButtons.forEach((button) => {
-    button.addEventListener("click", () => {
-      openPage(button.dataset.page);
-    });
+    button.addEventListener("click", () => openPage(button.dataset.page));
   });
 
   document.querySelectorAll("[data-open]").forEach((button) => {
-    button.addEventListener("click", () => {
-      openPage(button.dataset.open);
-    });
+    button.addEventListener("click", () => openPage(button.dataset.open));
   });
 
   // ==================================================
-  // CONNECTION STATUS AND AUTO-SYNC NOTIFICATIONS
+  // STOCK RESERVED BY LOCAL PENDING SALES
+  // ==================================================
+
+  function pendingQuantity(productIdValue) {
+    return pendingSales.reduce((total, sale) => {
+      const quantity = (sale.items || [])
+        .filter((item) => item.productId === productIdValue)
+        .reduce((sum, item) => sum + Number(item.quantity || 0), 0);
+
+      return total + quantity;
+    }, 0);
+  }
+
+  function availableStock(product) {
+    return Math.max(
+      0,
+      (Number(product.stock) || 0) - pendingQuantity(product.id)
+    );
+  }
+
+  // ==================================================
+  // CONNECTION STATUS
   // ==================================================
 
   function updateConnectionStatus() {
     const status = $("connectionStatus");
 
-    if (!status) return;
+    if (status) {
+      status.classList.toggle("offline", !navigator.onLine);
 
-    if (!navigator.onLine) {
-      status.textContent =
-        "Offline — saved changes will sync when online";
+      if (!navigator.onLine) {
+        status.textContent = "Offline — local sales queue enabled";
+      } else if (pendingSales.length > 0 || syncingSales) {
+        status.textContent =
+          `Syncing sales — ${pendingSales.length} pending`;
+      } else {
+        const synced =
+          productSnapshotFromServer &&
+          salesSnapshotFromServer &&
+          shoppingSnapshotFromServer;
 
-      status.classList.add("offline");
-
-      showMessage(
-        "You are offline. Supported changes are saved locally and will sync when online."
-      );
-
-      return;
+        status.textContent = synced
+          ? "Online — synced with Firebase"
+          : "Online — connecting to Firebase...";
+      }
     }
 
-    status.classList.remove("offline");
-
-    const allServerConfirmed =
-      productSnapshotFromServer &&
-      salesSnapshotFromServer &&
-      shoppingSnapshotFromServer;
-
-    status.textContent = allServerConfirmed
-      ? "Online — synced with Firebase"
-      : "Online — syncing with Firebase...";
+    updatePendingIndicator();
   }
 
-  window.addEventListener("online", () => {
+  window.addEventListener("offline", () => {
     updateConnectionStatus();
-
     showMessage(
-      "Connection restored. Checking and syncing pending changes with Firebase..."
+      "Internet disconnected. Completed sales can be queued locally."
     );
   });
 
-  window.addEventListener("offline", updateConnectionStatus);
+  window.addEventListener("online", async () => {
+    updateConnectionStatus();
 
-  updateConnectionStatus();
+    showMessage(
+      "Internet restored. Checking pending sales for automatic synchronization..."
+    );
+
+    await syncPendingSales();
+  });
 
   // ==================================================
-  // PRODUCT MANAGEMENT AND POS PRODUCT CARDS
+  // PRODUCT MANAGEMENT
   // ==================================================
 
   function makeProductCard(product, forPOS = false) {
     const card = makeElement("article", "product-card");
+    const stock = availableStock(product);
 
     card.append(
       makeElement("h3", "", product.name || "Unnamed product"),
       makeElement("p", "", formatMoney(product.price)),
-      makeElement(
-        "p",
-        "muted",
-        `Stock: ${Number(product.stock) || 0}`
-      )
+      makeElement("p", "muted", `Available stock: ${stock}`)
     );
 
     if (forPOS) {
-      card.append(
-        makeElement(
-          "p",
-          "muted",
-          Number(product.stock) > 0
-            ? "Available"
-            : "Out of stock"
-        )
-      );
-
       const addButton = makeButton(
-        Number(product.stock) > 0
-          ? "Add to cart"
-          : "Out of stock",
+        stock > 0 ? "Add to cart" : "Out of stock",
         "button primary full",
         () => addToCart(product.id)
       );
 
-      addButton.disabled = Number(product.stock) <= 0;
-
+      addButton.disabled = stock <= 0;
       card.append(addButton);
 
       return card;
@@ -342,50 +420,38 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     const actions = makeElement("div", "product-actions");
 
-    const editButton = makeButton("Edit", "button", () => {
-      productId.value = product.id;
-      productName.value = product.name;
-      productPrice.value = product.price;
-      productStock.value = product.stock;
+    actions.append(
+      makeButton("Edit", "button", () => {
+        productId.value = product.id;
+        productName.value = product.name;
+        productPrice.value = product.price;
+        productStock.value = product.stock;
 
-      openPage("productsPage");
+        openPage("productsPage");
+        productName.focus();
+      }),
 
-      productName.focus();
-    });
+      makeButton("Delete", "button", async () => {
+        if (!navigator.onLine) {
+          showMessage("Connect to the internet before deleting products.");
+          return;
+        }
 
-    const deleteButton = makeButton(
-      "Delete",
-      "button",
-      async () => {
-        if (
-          !confirm(
-            `Delete "${product.name}"? This cannot be undone.`
-          )
-        ) {
+        if (!confirm(`Delete "${product.name}"? This cannot be undone.`)) {
           return;
         }
 
         try {
           await deleteDoc(doc(db, "products", product.id));
-
-          showMessage(
-            navigator.onLine
-              ? "Product deleted."
-              : "Product deletion queued locally; it should sync when online."
-          );
+          showMessage("Product deleted.");
         } catch (error) {
-          console.error("Delete product failed:", error);
-
-          showMessage(
-            "Could not delete product. Check connection and Firestore rules."
-          );
+          console.error(error);
+          showMessage("Could not delete product.");
         }
-      }
+      })
     );
 
-    actions.append(editButton, deleteButton);
     card.append(actions);
-
     return card;
   }
 
@@ -395,12 +461,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     if (!products.length) {
       showEmpty(productList, "No products added yet.");
-
-      showEmpty(
-        posProducts,
-        "No products available. Add products or reconnect to load saved products."
-      );
-
+      showEmpty(posProducts, "No products available.");
       return;
     }
 
@@ -424,10 +485,14 @@ document.addEventListener("DOMContentLoaded", async () => {
       !Number.isInteger(stock) ||
       stock < 0
     ) {
-      showMessage(
-        "Enter a product name, a price greater than zero, and a whole-number stock."
-      );
+      showMessage("Enter a name, a positive price, and valid stock.");
+      return;
+    }
 
+    if (!navigator.onLine) {
+      showMessage(
+        "Product management is online-only in this version. Reconnect to save product changes."
+      );
       return;
     }
 
@@ -437,8 +502,6 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     if (saveButton) saveButton.disabled = true;
 
-    const editingProduct = Boolean(productId.value);
-
     try {
       const data = {
         name,
@@ -447,66 +510,30 @@ document.addEventListener("DOMContentLoaded", async () => {
         updatedAt: serverTimestamp()
       };
 
-      let writePromise;
-
-      if (editingProduct) {
-        writePromise = updateDoc(
-          doc(db, "products", productId.value),
-          data
-        );
+      if (productId.value) {
+        await updateDoc(doc(db, "products", productId.value), data);
+        showMessage("Product updated.");
       } else {
-        writePromise = addDoc(collection(db, "products"), {
+        await addDoc(collection(db, "products"), {
           ...data,
           createdAt: serverTimestamp()
         });
+
+        showMessage("Product added.");
       }
 
-      if (!navigator.onLine) {
-        showMessage(
-          "Offline — product change is queued locally and will sync when online if Firestore persistence is available."
-        );
-
-        productForm.reset();
-
-        if (productId) productId.value = "";
-
-        writePromise
-          .then(() => {
-            showMessage("Product change synced with Firebase.");
-          })
-          .catch((error) => {
-            console.error("Queued product write failed:", error);
-
-            showMessage(
-              "Product change did not sync. Reconnect and try again."
-            );
-          });
-      } else {
-        await writePromise;
-
-        showMessage(
-          editingProduct
-            ? "Product updated and saved to Firebase."
-            : "Product added and saved to Firebase."
-        );
-
-        productForm.reset();
-
-        if (productId) productId.value = "";
-      }
+      productForm.reset();
+      productId.value = "";
     } catch (error) {
-      console.error("Saving product failed:", error);
-
-      showMessage(
-        "Could not save product. Check your connection and Firestore permissions."
-      );
+      console.error(error);
+      showMessage("Could not save product. Check your connection.");
     } finally {
       if (saveButton) saveButton.disabled = false;
     }
   });
 
   // ==================================================
-  // POS CART
+  // CART AND TOTALS
   // ==================================================
 
   function getSubtotal() {
@@ -517,12 +544,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   function getDiscount() {
-    const discount = Number(discountInput?.value) || 0;
-
-    return Math.min(
-      Math.max(discount, 0),
-      getSubtotal()
-    );
+    const discount = Math.max(0, Number(discountInput?.value) || 0);
+    return Math.min(discount, getSubtotal());
   }
 
   function getGrandTotal() {
@@ -557,9 +580,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         makeElement(
           "p",
           "muted",
-          `${formatMoney(item.price)} each · ${formatMoney(
-            item.price * item.quantity
-          )}`
+          `${formatMoney(item.price)} each · ${formatMoney(item.price * item.quantity)}`
         )
       );
 
@@ -569,17 +590,13 @@ document.addEventListener("DOMContentLoaded", async () => {
         makeButton("−", "button secondary", () => {
           changeCartQuantity(item.id, -1);
         }),
-
         makeElement("span", "", String(item.quantity)),
-
         makeButton("＋", "button secondary", () => {
           changeCartQuantity(item.id, 1);
         }),
-
         makeButton("Remove", "button", () => {
           cart = cart.filter((entry) => entry.id !== item.id);
           renderCart();
-          showMessage(`${item.name} removed from cart.`);
         })
       );
 
@@ -602,16 +619,16 @@ document.addEventListener("DOMContentLoaded", async () => {
     const product = products.find((item) => item.id === id);
 
     if (!product) {
-      return showMessage(
-        "Product not found in the loaded product list."
-      );
+      showMessage("Product is not loaded.");
+      return;
     }
 
     const current = cart.find((item) => item.id === id);
-    const quantity = current ? current.quantity : 0;
+    const inCart = current?.quantity || 0;
 
-    if (quantity >= Number(product.stock)) {
-      return showMessage("Not enough stock available.");
+    if (inCart >= availableStock(product)) {
+      showMessage("Not enough available stock.");
+      return;
     }
 
     if (current) {
@@ -626,10 +643,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
 
     renderCart();
-
-    showMessage(
-      `${product.name} added to cart. Checkout still requires internet to verify stock safely.`
-    );
   }
 
   function changeCartQuantity(id, amount) {
@@ -638,14 +651,17 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     if (!item || !product) return;
 
-    const nextQuantity = item.quantity + amount;
+    const next = item.quantity + amount;
 
-    if (nextQuantity <= 0) {
+    if (next <= 0) {
       cart = cart.filter((entry) => entry.id !== id);
-    } else if (nextQuantity > Number(product.stock)) {
-      return showMessage("Quantity exceeds available stock.");
+    } else if (
+      next > availableStock(product) + item.quantity
+    ) {
+      showMessage("Quantity exceeds available stock.");
+      return;
     } else {
-      item.quantity = nextQuantity;
+      item.quantity = next;
     }
 
     renderCart();
@@ -657,52 +673,229 @@ document.addEventListener("DOMContentLoaded", async () => {
   $("clearCart")?.addEventListener("click", () => {
     cart = [];
     renderCart();
-
     showMessage("Cart cleared.");
   });
 
   // ==================================================
-  // CHECKOUT
-  // Checkout requires internet for accurate stock and sales.
+  // SAVE AN OFFLINE SALE LOCALLY
+  // ==================================================
+
+  function createLocalSale(items, subtotal, discount, cash) {
+    return {
+      id: makeSaleId(),
+      items: items.map((item) => ({
+        productId: item.id,
+        name: item.name,
+        price: item.price,
+        quantity: item.quantity,
+        lineTotal: item.price * item.quantity
+      })),
+      subtotal,
+      discount,
+      total: subtotal - discount,
+      cashReceived: cash,
+      change: cash - (subtotal - discount),
+      createdAt: new Date().toISOString(),
+      staffUid: currentUser.uid
+    };
+  }
+
+  function saveOfflineSale(sale) {
+    const nextQueue = [...pendingSales, sale];
+
+    if (!saveQueue(nextQueue)) return false;
+
+    pendingSales = nextQueue;
+    sales = [
+      ...sales.filter((item) => item.id !== sale.id),
+      { ...sale, syncStatus: "pending" }
+    ];
+
+    updatePendingIndicator();
+    renderProducts();
+    renderHistory();
+
+    return true;
+  }
+
+  // ==================================================
+  // UPLOAD PENDING SALES
+  // Stable document IDs and transactions prevent duplicate
+  // stock deductions when an upload is retried.
+  // ==================================================
+
+  async function uploadSale(sale) {
+    const saleRef = doc(db, "sales", sale.id);
+
+    await runTransaction(db, async (transaction) => {
+      const existingSale = await transaction.get(saleRef);
+
+      // This ID already exists: never deduct stock a second time.
+      if (existingSale.exists()) return;
+
+      const productRecords = [];
+
+      for (const item of sale.items) {
+        const productRef = doc(db, "products", item.productId);
+        const snapshot = await transaction.get(productRef);
+
+        if (!snapshot.exists()) {
+          throw new Error(`Product "${item.name}" no longer exists.`);
+        }
+
+        const data = snapshot.data();
+        const stock = Number(data.stock) || 0;
+
+        if (stock < item.quantity) {
+          throw new Error(
+            `Insufficient server stock for "${item.name}". ` +
+            `Available: ${stock}; requested: ${item.quantity}.`
+          );
+        }
+
+        productRecords.push({
+          ref: productRef,
+          data,
+          quantity: item.quantity
+        });
+      }
+
+      for (const item of productRecords) {
+        transaction.update(item.ref, {
+          stock: Number(item.data.stock) - item.quantity,
+          updatedAt: serverTimestamp()
+        });
+      }
+
+      transaction.set(saleRef, {
+        items: sale.items,
+        subtotal: sale.subtotal,
+        discount: sale.discount,
+        total: sale.total,
+        cashReceived: sale.cashReceived,
+        change: sale.change,
+        staffUid: sale.staffUid,
+        createdAt: new Date(sale.createdAt)
+      });
+    });
+  }
+
+  async function syncPendingSales() {
+    if (
+      syncingSales ||
+      !navigator.onLine ||
+      !auth.currentUser ||
+      pendingSales.length === 0
+    ) {
+      updateConnectionStatus();
+      return;
+    }
+
+    syncingSales = true;
+    updateConnectionStatus();
+
+    showMessage(`Syncing ${pendingSales.length} pending sale(s)...`);
+
+    try {
+      while (navigator.onLine && pendingSales.length > 0) {
+        const sale = pendingSales[0];
+
+        try {
+          await uploadSale(sale);
+
+          // Remove only after uploadSale succeeds.
+          // If the upload fails, the sale stays in localStorage.
+          const remaining = pendingSales.filter(
+            (item) => item.id !== sale.id
+          );
+
+          if (!saveQueue(remaining)) {
+            showMessage(
+              "Sale reached Firebase, but local queue cleanup failed. It will be retried safely."
+            );
+            break;
+          }
+
+          pendingSales = remaining;
+
+          sales = sales.map((item) =>
+            item.id === sale.id
+              ? { ...sale, syncStatus: "synced" }
+              : item
+          );
+
+          renderHistory();
+          renderProducts();
+          updatePendingIndicator();
+
+          showMessage(
+            `Sale synced successfully. ${pendingSales.length} sale(s) remain.`
+          );
+        } catch (error) {
+          console.error("Sale sync failed:", sale.id, error);
+
+          showMessage(
+            `A sale could not sync: ${error.message || "connection error"}. ` +
+            "It remains saved locally. Check stock and reconnect before retrying."
+          );
+
+          break;
+        }
+      }
+
+      if (pendingSales.length === 0) {
+        showMessage(
+          "All pending sales were confirmed by Firebase. Local queued sale data has been cleared."
+        );
+      }
+    } finally {
+      syncingSales = false;
+      updateConnectionStatus();
+      renderHistory();
+    }
+  }
+
+  // ==================================================
+  // CHECKOUT — ONLINE AND OFFLINE
   // ==================================================
 
   $("completeSale")?.addEventListener("click", async () => {
     if (isCheckingOut) return;
 
     if (!cart.length) {
-      return showMessage("Add at least one product to the cart.");
-    }
-
-    if (!navigator.onLine) {
-      showMessage(
-        "Offline mode: you can build the cart, but checkout is disabled until internet returns so stock and sales remain accurate."
-      );
-
+      showMessage("Add at least one product to the cart.");
       return;
     }
 
+    if (!auth.currentUser) {
+      showMessage("Your staff session is unavailable. Sign in again.");
+      return;
+    }
+
+    const cartForSale = cart.map((item) => ({ ...item }));
     const subtotal = getSubtotal();
     const discount = getDiscount();
     const total = subtotal - discount;
     const cash = Number(cashInput?.value);
 
     if (!Number.isFinite(cash) || cash < total) {
-      return showMessage(
-        "Cash received must be equal to or greater than the total."
-      );
+      showMessage("Cash received must be equal to or greater than the total.");
+      return;
     }
 
-    if (!auth.currentUser) {
-      return showMessage(
-        "Your staff session is unavailable. Please sign in again."
-      );
-    }
+    // Ensure that each product is available in the local stock view.
+    for (const item of cartForSale) {
+      const product = products.find((entry) => entry.id === item.id);
 
-    const checkoutButton = $("completeSale");
-    const cartForSale = cart.map((item) => ({ ...item }));
-    const saleRef = doc(collection(db, "sales"));
+      if (!product || availableStock(product) < item.quantity) {
+        showMessage(`Not enough available stock for "${item.name}".`);
+        return;
+      }
+    }
 
     isCheckingOut = true;
+
+    const checkoutButton = $("completeSale");
 
     if (checkoutButton) {
       checkoutButton.disabled = true;
@@ -710,71 +903,49 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
 
     try {
-      await runTransaction(db, async (transaction) => {
-        const freshProducts = [];
+      // Reconcile earlier offline sales before accepting another
+      // online sale. If reconciliation fails, queue this sale too.
+      if (navigator.onLine && pendingSales.length > 0) {
+        await syncPendingSales();
+      }
 
-        for (const item of cartForSale) {
-          const productRef = doc(db, "products", item.id);
-          const snapshot = await transaction.get(productRef);
+      const sale = createLocalSale(
+        cartForSale,
+        subtotal,
+        discount,
+        cash
+      );
 
-          if (!snapshot.exists()) {
-            throw new Error(
-              `Product "${item.name}" no longer exists.`
-            );
-          }
-
-          const data = snapshot.data();
-          const currentStock = Number(data.stock) || 0;
-
-          if (currentStock < item.quantity) {
-            throw new Error(
-              `Insufficient stock for "${data.name}". Available: ${currentStock}.`
-            );
-          }
-
-          const currentPrice = Number(data.price);
-
-          if (
-            !Number.isFinite(currentPrice) ||
-            currentPrice < 0
-          ) {
-            throw new Error(
-              `Invalid price for "${data.name}".`
-            );
-          }
-
-          freshProducts.push({
-            ref: productRef,
-            data,
-            quantity: item.quantity
-          });
+      if (!navigator.onLine || pendingSales.length > 0) {
+        if (!saveOfflineSale(sale)) {
+          throw new Error(
+            "The sale could not be stored locally. Do not close this page; reconnect and try again."
+          );
         }
 
-        for (const item of freshProducts) {
-          transaction.update(item.ref, {
-            stock: Number(item.data.stock) - item.quantity,
-            updatedAt: serverTimestamp()
-          });
+        cart = [];
+
+        if (discountInput) discountInput.value = "0";
+        if (cashInput) cashInput.value = "";
+
+        renderCart();
+
+        showMessage(
+          `SALE SAVED LOCALLY — ${pendingSales.length} sale(s) waiting to sync.`
+        );
+
+        if (navigator.onLine) {
+          await syncPendingSales();
         }
 
-        transaction.set(saleRef, {
-          items: cartForSale.map((item) => ({
-            productId: item.id,
-            name: item.name,
-            price: item.price,
-            quantity: item.quantity,
-            lineTotal: item.price * item.quantity
-          })),
+        return;
+      }
 
-          subtotal,
-          discount,
-          total,
-          cashReceived: cash,
-          change: cash - total,
-          createdAt: serverTimestamp(),
-          staffUid: auth.currentUser.uid
-        });
-      });
+      // Online sale: save locally first, then upload using the same ID.
+      // This protects the sale if the connection drops mid-checkout.
+      if (!saveOfflineSale(sale)) {
+        throw new Error("Could not save a local recovery copy of the sale.");
+      }
 
       cart = [];
 
@@ -783,15 +954,10 @@ document.addEventListener("DOMContentLoaded", async () => {
 
       renderCart();
 
-      showMessage(
-        "Sale saved to Firebase! Stock and sales history were updated."
-      );
+      await syncPendingSales();
     } catch (error) {
       console.error("Checkout failed:", error);
-
-      showMessage(
-        error.message || "Sale failed. Check your connection and try again."
-      );
+      showMessage(error.message || "Checkout failed. Please retry.");
     } finally {
       isCheckingOut = false;
 
@@ -803,7 +969,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
 
   // ==================================================
-  // SHOPPING LIST AND BUDGET
+  // SHOPPING LIST
   // ==================================================
 
   function renderShopping() {
@@ -836,53 +1002,24 @@ document.addEventListener("DOMContentLoaded", async () => {
         )
       );
 
-      const removeButton = makeButton(
-        "Remove",
-        "button",
-        async () => {
-          try {
-            const deletion = deleteDoc(
-              doc(db, "shoppingItems", item.id)
-            );
-
-            if (!navigator.onLine) {
-              showMessage(
-                "Offline — removal queued locally and should sync when online."
-              );
-
-              deletion
-                .then(() => {
-                  showMessage("Shopping item removal synced with Firebase.");
-                })
-                .catch((error) => {
-                  console.error(
-                    "Queued shopping deletion failed:",
-                    error
-                  );
-
-                  showMessage(
-                    "Shopping item removal did not sync. Reconnect and try again."
-                  );
-                });
-            } else {
-              await deletion;
-
-              showMessage("Shopping item removed and synced.");
-            }
-          } catch (error) {
-            console.error(
-              "Removing shopping item failed:",
-              error
-            );
-
-            showMessage(
-              "Could not remove item. Check connection and permissions."
-            );
+      row.append(
+        details,
+        makeButton("Remove", "button", async () => {
+          if (!navigator.onLine) {
+            showMessage("Connect to the internet before changing the shopping list.");
+            return;
           }
-        }
+
+          try {
+            await deleteDoc(doc(db, "shoppingItems", item.id));
+            showMessage("Shopping item removed.");
+          } catch (error) {
+            console.error(error);
+            showMessage("Could not remove shopping item.");
+          }
+        })
       );
 
-      row.append(details, removeButton);
       shoppingList.append(row);
     });
 
@@ -896,7 +1033,6 @@ document.addEventListener("DOMContentLoaded", async () => {
         budgetRemaining.classList.remove("over-budget");
       } else {
         const remaining = Number(shoppingBudget.value) - total;
-
         budgetRemaining.textContent = formatMoney(remaining);
 
         budgetRemaining.classList.toggle(
@@ -910,6 +1046,11 @@ document.addEventListener("DOMContentLoaded", async () => {
   shoppingForm?.addEventListener("submit", async (event) => {
     event.preventDefault();
 
+    if (!navigator.onLine) {
+      showMessage("Reconnect to add items to the shared shopping list.");
+      return;
+    }
+
     const name = $("shoppingName")?.value.trim();
     const price = Number($("shoppingPrice")?.value);
     const quantity = Number($("shoppingQty")?.value);
@@ -921,66 +1062,27 @@ document.addEventListener("DOMContentLoaded", async () => {
       !Number.isInteger(quantity) ||
       quantity < 1
     ) {
-      return showMessage(
-        "Enter a valid item name, price, and whole-number quantity."
-      );
-    }
-
-    if (!auth.currentUser) {
-      return showMessage("Please sign in again before adding an item.");
+      showMessage("Enter a valid name, price, and quantity.");
+      return;
     }
 
     try {
-      const writePromise = addDoc(
-        collection(db, "shoppingItems"),
-        {
-          name,
-          price,
-          quantity,
-          createdAt: serverTimestamp(),
-          addedBy: auth.currentUser.uid
-        }
-      );
+      await addDoc(collection(db, "shoppingItems"), {
+        name,
+        price,
+        quantity,
+        createdAt: serverTimestamp(),
+        addedBy: currentUser.uid
+      });
 
-      if (!navigator.onLine) {
-        shoppingForm.reset();
+      shoppingForm.reset();
 
-        if ($("shoppingQty")) {
-          $("shoppingQty").value = "1";
-        }
+      if ($("shoppingQty")) $("shoppingQty").value = "1";
 
-        showMessage(
-          "Offline — shopping item queued locally and should sync when online."
-        );
-
-        writePromise
-          .then(() => {
-            showMessage("Shopping item synced with Firebase.");
-          })
-          .catch((error) => {
-            console.error("Queued shopping write failed:", error);
-
-            showMessage(
-              "Shopping item did not sync. Reconnect and try again."
-            );
-          });
-      } else {
-        await writePromise;
-
-        shoppingForm.reset();
-
-        if ($("shoppingQty")) {
-          $("shoppingQty").value = "1";
-        }
-
-        showMessage("Item added and saved to Firebase.");
-      }
+      showMessage("Shopping item saved.");
     } catch (error) {
-      console.error("Adding shopping item failed:", error);
-
-      showMessage(
-        "Could not add item. Check connection and Firestore rules."
-      );
+      console.error(error);
+      showMessage("Could not save shopping item.");
     }
   });
 
@@ -988,16 +1090,18 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   // ==================================================
   // SALES HISTORY
-  // DELETE INDIVIDUAL SALE AND CLEAR ALL HISTORY
   // ==================================================
 
-  function toDate(timestamp) {
-    if (timestamp && typeof timestamp.toDate === "function") {
-      return timestamp.toDate();
+  function toDate(value) {
+    if (value && typeof value.toDate === "function") {
+      return value.toDate();
     }
 
-    if (timestamp instanceof Date) {
-      return timestamp;
+    if (value instanceof Date) return value;
+
+    if (typeof value === "string") {
+      const date = new Date(value);
+      return Number.isNaN(date.getTime()) ? null : date;
     }
 
     return null;
@@ -1008,12 +1112,11 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     historyList.replaceChildren();
 
-    const sortedSales = [...sales].sort((a, b) => {
-      return (
+    const sortedSales = [...sales].sort(
+      (a, b) =>
         (toDate(b.createdAt)?.getTime() || 0) -
         (toDate(a.createdAt)?.getTime() || 0)
-      );
-    });
+    );
 
     if (!sortedSales.length) {
       showEmpty(historyList, "No sales recorded yet.");
@@ -1023,7 +1126,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       const card = makeElement("article", "history-card");
       const date = toDate(sale.createdAt);
 
-      const itemSummary = (sale.items || [])
+      const summary = (sale.items || [])
         .map((item) => `${item.name} × ${item.quantity}`)
         .join(", ");
 
@@ -1032,9 +1135,9 @@ document.addEventListener("DOMContentLoaded", async () => {
         makeElement(
           "p",
           "muted",
-          date ? date.toLocaleString() : "Timestamp pending..."
+          date ? date.toLocaleString() : "Date pending"
         ),
-        makeElement("p", "", itemSummary || "No item details"),
+        makeElement("p", "", summary || "No item details"),
         makeElement(
           "p",
           "muted",
@@ -1044,46 +1147,56 @@ document.addEventListener("DOMContentLoaded", async () => {
           "p",
           "muted",
           `Cash: ${formatMoney(sale.cashReceived)} · Change: ${formatMoney(sale.change)}`
+        ),
+        makeElement(
+          "p",
+          "sync-status",
+          sale.syncStatus === "pending"
+            ? "PENDING SYNC — saved on this device"
+            : "Saved in sales history"
         )
       );
 
-      const deleteButton = makeButton(
-        "Delete sale",
-        "button",
-        async () => {
-          if (!navigator.onLine) {
-            return showMessage(
-              "Connect to the internet before deleting a sales record."
-            );
-          }
+      card.append(
+        makeButton("Delete sale", "button", async () => {
+          if (sale.syncStatus === "pending") {
+            if (
+              !confirm(
+                "Remove this unsynced sale from this device? It will not be recorded in Firebase."
+              )
+            ) return;
 
-          if (
-            !confirm(
-              "Permanently delete this sales record? This cannot be undone."
-            )
-          ) {
+            pendingSales = pendingSales.filter(
+              (item) => item.id !== sale.id
+            );
+
+            if (!saveQueue(pendingSales)) return;
+
+            sales = sales.filter((item) => item.id !== sale.id);
+
+            renderHistory();
+            renderProducts();
+            showMessage("Pending sale removed from this device.");
             return;
           }
 
-          deleteButton.disabled = true;
+          if (!navigator.onLine) {
+            showMessage("Connect to the internet before deleting a synced sale.");
+            return;
+          }
+
+          if (!confirm("Permanently delete this sales record?")) return;
 
           try {
             await deleteDoc(doc(db, "sales", sale.id));
-
-            showMessage("Sales record deleted from Firebase.");
+            showMessage("Sales record deleted.");
           } catch (error) {
-            console.error("Delete sale failed:", error);
-
-            showMessage(
-              "Could not delete this sale. Check Firestore rules and connection."
-            );
-
-            deleteButton.disabled = false;
+            console.error(error);
+            showMessage("Could not delete sales record.");
           }
-        }
+        })
       );
 
-      card.append(deleteButton);
       historyList.append(card);
     });
 
@@ -1114,7 +1227,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   }
 
-  // Add a Clear All History button if it is missing from index.html.
+  // Clear all history button
   let clearHistoryButton = $("clearHistory");
 
   if (!clearHistoryButton && historyList) {
@@ -1126,70 +1239,52 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     clearHistoryButton.id = "clearHistory";
 
-    historyList.insertAdjacentElement(
-      "beforebegin",
-      clearHistoryButton
-    );
+    historyList.insertAdjacentElement("beforebegin", clearHistoryButton);
   }
 
   clearHistoryButton?.addEventListener("click", async () => {
     if (!navigator.onLine) {
-      return showMessage(
-        "Connect to the internet before clearing sales history."
-      );
-    }
-
-    if (
-      !confirm(
-        "Permanently delete ALL sales history? This cannot be undone. Export a backup first if you need these records."
-      )
-    ) {
+      showMessage("Connect to the internet before clearing history.");
       return;
     }
 
-    const button = clearHistoryButton;
-
-    if (button) {
-      button.disabled = true;
-      button.textContent = "Deleting...";
+    if (pendingSales.length > 0) {
+      showMessage(
+        "Sync all pending sales before clearing history so unsynced sales are not lost."
+      );
+      return;
     }
+
+    if (!confirm("Permanently delete all sales history? Export a backup first if needed.")) {
+      return;
+    }
+
+    clearHistoryButton.disabled = true;
 
     try {
       const snapshot = await getDocs(collection(db, "sales"));
-      const saleDocs = snapshot.docs;
 
-      // Firestore batches allow up to 500 write operations.
-      for (let i = 0; i < saleDocs.length; i += 450) {
+      for (let i = 0; i < snapshot.docs.length; i += 450) {
         const batch = writeBatch(db);
 
-        saleDocs
-          .slice(i, i + 450)
-          .forEach((saleDoc) => {
-            batch.delete(saleDoc.ref);
-          });
+        snapshot.docs.slice(i, i + 450).forEach((saleDoc) => {
+          batch.delete(saleDoc.ref);
+        });
 
         await batch.commit();
       }
 
-      showMessage(
-        `Deleted ${saleDocs.length} sales record(s). History cleared.`
-      );
+      showMessage(`Deleted ${snapshot.size} sales record(s).`);
     } catch (error) {
-      console.error("Clear history failed:", error);
-
-      showMessage(
-        "Could not clear all history. Some records may remain; check connection and permissions."
-      );
+      console.error(error);
+      showMessage("Could not clear all history.");
     } finally {
-      if (button) {
-        button.disabled = false;
-        button.textContent = "Clear All History";
-      }
+      clearHistoryButton.disabled = false;
     }
   });
 
   // ==================================================
-  // REAL-TIME FIRESTORE LISTENERS
+  // FIRESTORE LISTENERS
   // ==================================================
 
   onSnapshot(
@@ -1206,30 +1301,14 @@ document.addEventListener("DOMContentLoaded", async () => {
         !snapshot.metadata.hasPendingWrites;
 
       renderProducts();
-      renderCart();
 
-      if (snapshot.metadata.hasPendingWrites) {
-        showMessage(
-          "Saving product changes — they will sync with Firebase when the connection is available."
-        );
-      } else if (snapshot.metadata.fromCache) {
-        showMessage(
-          navigator.onLine
-            ? "Showing cached products. Waiting for Firebase confirmation..."
-            : "Offline — showing saved products. Pending changes will sync when online."
-        );
-      } else {
-        showMessage("Products synced with Firebase.");
-      }
+      if (cart.length) renderCart();
 
       updateConnectionStatus();
     },
     (error) => {
-      console.error("Loading products failed:", error);
-
-      showMessage(
-        "Could not load products. Check connection and Firestore rules."
-      );
+      console.error("Product listener failed:", error);
+      showMessage("Could not load products. Check connection and permissions.");
     }
   );
 
@@ -1237,24 +1316,35 @@ document.addEventListener("DOMContentLoaded", async () => {
     collection(db, "sales"),
     { includeMetadataChanges: true },
     (snapshot) => {
-      sales = snapshot.docs.map((item) => ({
+      const serverSales = snapshot.docs.map((item) => ({
         id: item.id,
-        ...item.data()
+        ...item.data(),
+        syncStatus: "synced"
       }));
 
       salesSnapshotFromServer =
         !snapshot.metadata.fromCache &&
         !snapshot.metadata.hasPendingWrites;
 
+      // Keep pending local sales visible until their uploads are confirmed.
+      const localPending = pendingSales.map((sale) => ({
+        ...sale,
+        syncStatus: "pending"
+      }));
+
+      const serverIds = new Set(serverSales.map((sale) => sale.id));
+
+      sales = [
+        ...serverSales,
+        ...localPending.filter((sale) => !serverIds.has(sale.id))
+      ];
+
       renderHistory();
       updateConnectionStatus();
     },
     (error) => {
-      console.error("Loading sales failed:", error);
-
-      showMessage(
-        "Could not load sales history. Check connection and Firestore rules."
-      );
+      console.error("Sales listener failed:", error);
+      showMessage("Could not load sales history.");
     }
   );
 
@@ -1275,16 +1365,22 @@ document.addEventListener("DOMContentLoaded", async () => {
       updateConnectionStatus();
     },
     (error) => {
-      console.error("Loading shopping list failed:", error);
-
-      showMessage(
-        "Could not load shopping list. Check connection and Firestore rules."
-      );
+      console.error("Shopping list listener failed:", error);
+      showMessage("Could not load shopping list.");
     }
   );
+
+  // ==================================================
+  // INITIAL DISPLAY AND AUTOMATIC RETRY
+  // ==================================================
 
   renderProducts();
   renderCart();
   renderShopping();
   renderHistory();
+  updateConnectionStatus();
+
+  if (navigator.onLine && pendingSales.length > 0) {
+    await syncPendingSales();
+  }
 });
