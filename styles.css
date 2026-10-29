@@ -1061,3 +1061,121 @@ select:focus {
     padding: 8px;
   }
 }
+
+/* =========================================
+   INTERACTIVE MODALS — TAN & OLIVE
+========================================= */
+.app-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  overflow-y: auto;
+  background: rgba(30, 34, 21, 0.62);
+  animation: modalFadeIn 150ms ease-out;
+}
+.app-modal {
+  width: min(100%, 440px);
+  max-height: min(90dvh, 720px);
+  overflow-y: auto;
+  padding: clamp(18px, 4vw, 26px);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 20px 60px rgba(25, 28, 18, 0.28);
+}
+.app-modal-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.app-modal-heading h2 {
+  margin: 0;
+  color: var(--olive-dark);
+  font-size: clamp(20px, 5vw, 25px);
+}
+.app-modal-close {
+  flex: 0 0 36px;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: var(--olive-light);
+  color: var(--olive-dark);
+  font-size: 26px;
+  line-height: 1;
+}
+.app-modal-message {
+  margin: 0 0 18px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.app-modal-label {
+  display: grid;
+  gap: 7px;
+  margin: 14px 0;
+  color: var(--text);
+  font-weight: 600;
+}
+.app-modal-input {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--tan-pale);
+  color: var(--text);
+}
+.app-modal-input:focus {
+  outline: 2px solid var(--olive);
+  outline-offset: 2px;
+}
+.app-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 22px;
+}
+.app-modal-actions .button {
+  min-height: 42px;
+  min-width: 100px;
+}
+.button.danger {
+  border: 1px solid var(--danger);
+  background: var(--danger);
+  color: white;
+}
+@keyframes modalFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@media (max-width: 480px) {
+  .app-modal-backdrop { align-items: flex-end; padding: 10px; }
+  .app-modal { width: 100%; max-height: 88dvh; border-radius: 18px 18px 12px 12px; }
+  .app-modal-actions { display: grid; grid-template-columns: 1fr 1fr; }
+  .app-modal-actions .button { min-width: 0; width: 100%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .app-modal-backdrop { animation: none; }
+}
+
+#appNotice {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  margin: 0;
+  padding: 10px var(--page-padding);
+  border-bottom: 1px solid var(--border);
+  background: var(--olive-light);
+  color: var(--olive-dark);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
